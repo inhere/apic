@@ -215,6 +215,33 @@ func TestConfigShortReferencedSecret(t *testing.T) {
 	}
 }
 
+func TestSiteRefreshInsecureWarning(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("APIX_CONFIG_DIR", dir)
+	data, err := os.ReadFile(fixture(t, "min-v2.json"))
+	assert.Require(t, assert.NoError(t, err))
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if _, err := w.Write(data); err != nil {
+			t.Error(err)
+		}
+	}))
+	defer server.Close()
+	cfg := fmt.Sprintf("version: 1\nsites:\n  demo:\n    source: {type: openapi, url: %q}\n    default_env: default\n    envs:\n      default: {insecure: true}\n", server.URL)
+	assert.NoError(t, os.WriteFile(filepath.Join(dir, "config.yaml"), []byte(cfg), 0600))
+	r, w, err := os.Pipe()
+	assert.Require(t, assert.NoError(t, err))
+	old := os.Stderr
+	os.Stderr = w
+	defer func() { os.Stderr = old }()
+	code, _ := runCommand(t, "site", "refresh", "demo")
+	assert.NoError(t, w.Close())
+	warning, err := io.ReadAll(r)
+	assert.NoError(t, err)
+	assert.NoError(t, r.Close())
+	assert.Eq(t, 0, code)
+	assert.Contains(t, string(warning), "TLS certificate verification disabled")
+}
+
 func TestSiteRefreshStaticAuth(t *testing.T) {
 	for _, tc := range []struct {
 		name, auth, header, value string
