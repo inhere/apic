@@ -105,8 +105,33 @@ func TestFetchErrors(t *testing.T) {
 
 type roundTripFail struct{}
 
-func (roundTripFail) RoundTrip(*http.Request) (*http.Response, error) {
-	return nil, errors.New("network unavailable")
+func (roundTripFail) RoundTrip(r *http.Request) (*http.Response, error) {
+	return nil, errors.New("network unavailable " + r.URL.String())
+}
+
+func TestFetchRedirectAndApplyError(t *testing.T) {
+	t.Setenv("APIX_CONFIG_DIR", t.TempDir())
+	var reached atomic.Bool
+	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		reached.Store(true)
+	}))
+	defer target.Close()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, target.URL, http.StatusFound)
+	}))
+	defer server.Close()
+	src := model.Source{URL: server.URL + "/spec?secret=demo"}
+	_, _, _, err := spec.Fetch(context.Background(), src, t.TempDir(), spec.FetchOptions{Apply: func(r *http.Request) error {
+		r.Header.Set("Authorization", "Bearer demo")
+		return nil
+	}})
+	assertCode(t, err, model.ExitLocal)
+	assert.True(t, !reached.Load())
+	_, _, _, err = spec.Fetch(context.Background(), src, t.TempDir(), spec.FetchOptions{Apply: func(r *http.Request) error {
+		return errors.New(r.URL.String())
+	}})
+	assertCode(t, err, model.ExitLocal)
+	assert.True(t, !strings.Contains(err.Error(), "secret"))
 }
 
 func TestCacheRefresh(t *testing.T) {
@@ -148,7 +173,8 @@ func TestCacheRefresh(t *testing.T) {
 	assert.Eq(t, 0, len(warnings))
 	assert.Eq(t, int32(2), calls.Load())
 	failing.Store(true)
-	stale, warnings, err := spec.Index(context.Background(), "demo", src, dir, spec.IndexOptions{Refresh: true})
+	src.TTL = time.Nanosecond
+	stale, warnings, err := spec.Index(context.Background(), "demo", src, dir, spec.IndexOptions{})
 	assert.Require(t, assert.NoError(t, err))
 	assert.True(t, reflect.DeepEqual(first, stale))
 	assert.Eq(t, 1, len(warnings))

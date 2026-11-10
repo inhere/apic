@@ -65,9 +65,6 @@ func Index(ctx context.Context, site string, src model.Source, dir string, opt I
 			return stale(errors.New("server returned 304 without a cached index"))
 		}
 		meta.FetchedAt = time.Now()
-		if etag != "" {
-			meta.ETag = etag
-		}
 		data, err := json.Marshal(meta)
 		if err != nil {
 			return stale(err)
@@ -95,10 +92,10 @@ func Index(ctx context.Context, site string, src model.Source, dir string, opt I
 	if err := atomicCacheWrite(rawFile, raw); err != nil {
 		return stale(err)
 	}
-	if err := atomicCacheWrite(metaFile, metaData); err != nil {
+	if err := atomicCacheWrite(indexFile, indexData); err != nil {
 		return stale(err)
 	}
-	if err := atomicCacheWrite(indexFile, indexData); err != nil {
+	if err := atomicCacheWrite(metaFile, metaData); err != nil {
 		return stale(err)
 	}
 	return index, warnings, nil

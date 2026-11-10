@@ -2,7 +2,6 @@ package spec
 
 import (
 	"context"
-	"fmt"
 	"io"
 	"net/http"
 	"net/url"
@@ -52,16 +51,19 @@ func Fetch(ctx context.Context, src model.Source, dir string, opt FetchOptions) 
 	}
 	if opt.Apply != nil {
 		if err := opt.Apply(req); err != nil {
-			return nil, "", false, model.Errorf(model.ExitLocal, "apply definition credentials: %v", err)
+			return nil, "", false, model.Errorf(model.ExitLocal, "apply definition credentials failed")
 		}
 	}
 	client := opt.Client
 	if client == nil {
 		client = http.DefaultClient
 	}
-	resp, err := client.Do(req)
+	// Do not forward caller-supplied credentials to redirect targets.
+	clientCopy := *client
+	clientCopy.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+	resp, err := clientCopy.Do(req)
 	if err != nil {
-		return nil, "", false, model.Errorf(model.ExitNetwork, "fetch definition %s: %v", location, redactFetchError(err))
+		return nil, "", false, model.Errorf(model.ExitNetwork, "fetch definition %s: network request failed", location)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode == http.StatusNotModified {
@@ -72,15 +74,7 @@ func Fetch(ctx context.Context, src model.Source, dir string, opt FetchOptions) 
 	}
 	data, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return nil, "", false, model.Errorf(model.ExitNetwork, "read definition %s: %v", location, redactFetchError(err))
+		return nil, "", false, model.Errorf(model.ExitNetwork, "read definition %s: network response failed", location)
 	}
 	return data, resp.Header.Get("ETag"), false, nil
-}
-
-func redactFetchError(err error) error {
-	// net/http wraps transport failures in url.Error, whose Error() includes the original URL.
-	if e, ok := err.(*url.Error); ok {
-		return fmt.Errorf("%s: %v", e.Op, e.Err)
-	}
-	return err
 }
