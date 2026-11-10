@@ -5,14 +5,11 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"regexp"
 	"strings"
 
 	"github.com/goccy/go-yaml"
 	"github.com/inhere/apix/internal/model"
 )
-
-var siteName = regexp.MustCompile(`^[a-z][a-z0-9-]*$`)
 
 var reservedNames = map[string]bool{
 	"site": true, "ops": true, "desc": true, "use": true, "auth": true,
@@ -68,8 +65,13 @@ func Load(dir string) (*model.Config, error) {
 	return cfg, nil
 }
 
+// ValidateSiteName checks the shared syntax and reserved command names.
+func ValidateSiteName(name string) error {
+	return validateName("site", name)
+}
+
 func validateName(file, name string) error {
-	if !siteName.MatchString(name) || reservedNames[name] {
+	if !model.ValidSiteName(name) || reservedNames[name] {
 		return model.Errorf(model.ExitLocal, "%s site %q: invalid or reserved site name", file, name)
 	}
 	return nil
