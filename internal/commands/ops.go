@@ -14,14 +14,17 @@ import (
 
 type opsOptions struct{ tag, match, output string }
 
-func opsCommand() *gcli.Command {
+func opsCommand(g *globalOpts) *gcli.Command {
 	opt := &opsOptions{}
 	return &gcli.Command{Name: "ops", Desc: "List operations", Config: func(c *gcli.Command) {
 		c.AddArg("site", "Site name", true)
 		c.StrOpt(&opt.tag, "tag", "", "", "Filter by tag")
 		c.StrOpt(&opt.match, "match", "", "", "Case-insensitive text filter")
-		c.StrOpt(&opt.output, "output", "o", "", "Output format (json)")
-	}, Func: func(c *gcli.Command, _ []string) error { return listOps(c.Arg("site").String(), opt) }}
+		g.bindOutput(&c.Flags)
+	}, Func: func(c *gcli.Command, _ []string) error {
+		opt.output = g.Output
+		return listOps(c.Arg("site").String(), opt)
+	}}
 }
 
 type operationRow struct {
@@ -51,6 +54,11 @@ func listOps(name string, opt *opsOptions) error {
 	if err := printWarnings(d, warnings); err != nil {
 		return err
 	}
+	return printOps(idx, opt)
+}
+
+// printOps lists the operations of an index, applying the filters in opt.
+func printOps(idx *model.Index, opt *opsOptions) error {
 	rows := make([]operationRow, 0)
 	for _, op := range idx.Ops {
 		if opt.tag != "" {
@@ -85,16 +93,13 @@ func listOps(name string, opt *opsOptions) error {
 	return localError(w.Flush())
 }
 
-type descOptions struct{ output string }
-
-func descCommand() *gcli.Command {
-	opt := &descOptions{}
+func descCommand(g *globalOpts) *gcli.Command {
 	return &gcli.Command{Name: "desc", Desc: "Describe an operation", Config: func(c *gcli.Command) {
 		c.AddArg("site", "Site name", true)
 		c.AddArg("op", "Operation name", true)
-		c.StrOpt(&opt.output, "output", "o", "", "Output format (json)")
+		g.bindOutput(&c.Flags)
 	}, Func: func(c *gcli.Command, _ []string) error {
-		return describeOp(c.Arg("site").String(), c.Arg("op").String(), opt.output)
+		return describeOp(c.Arg("site").String(), c.Arg("op").String(), g.Output)
 	}}
 }
 func describeOp(name, operation, format string) error {

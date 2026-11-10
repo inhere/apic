@@ -24,11 +24,9 @@ import (
 )
 
 type siteAddOptions struct{ spec, def, baseURL string }
-type siteListOptions struct{ output string }
 
-func siteCommand() *gcli.Command {
+func siteCommand(g *globalOpts) *gcli.Command {
 	add := &siteAddOptions{}
-	list := &siteListOptions{}
 	return &gcli.Command{Name: "site", Desc: "Manage API sites", Subs: []*gcli.Command{
 		{Name: "add", Desc: "Add a site; for authenticated specs configure source.auth and auths in its YAML, then run site refresh", Config: func(c *gcli.Command) {
 			c.AddArg("name", "Site name", true)
@@ -37,7 +35,7 @@ func siteCommand() *gcli.Command {
 			c.StrOpt(&add.baseURL, "base-url", "", "", "Default base URL")
 		}, Func: func(c *gcli.Command, _ []string) error { return addSite(c.Arg("name").String(), add) }},
 		{Name: "rm", Desc: "Remove a managed site", Config: siteNameArg, Func: func(c *gcli.Command, _ []string) error { return removeSite(c.Arg("name").String()) }},
-		{Name: "ls", Desc: "List sites", Config: func(c *gcli.Command) { c.StrOpt(&list.output, "output", "o", "", "Output format (json)") }, Func: func(c *gcli.Command, _ []string) error { return listSites(list.output) }},
+		{Name: "ls", Desc: "List sites", Config: func(c *gcli.Command) { g.bindOutput(&c.Flags) }, Func: func(c *gcli.Command, _ []string) error { return listSites(g.Output) }},
 		{Name: "show", Desc: "Show a site", Config: siteNameArg, Func: func(c *gcli.Command, _ []string) error { return showSite(c.Arg("name").String()) }},
 		{Name: "refresh", Desc: "Refresh a site index", Config: siteNameArg, Func: func(c *gcli.Command, _ []string) error { return refreshSite(c.Arg("name").String()) }},
 	}}
@@ -494,5 +492,19 @@ func refreshSite(name string) error {
 	if err := printWarnings(d, warnings); err != nil {
 		return err
 	}
+	if refreshFailed(warnings) {
+		// An explicit refresh that fell back to the stale cache did not succeed.
+		return model.Errorf(model.ExitLocal, "refresh of site %q failed; the cached index is stale", name)
+	}
 	return writeString(os.Stdout, fmt.Sprintf("%s\t%d\n", name, len(idx.Ops)))
+}
+
+// refreshFailed reports whether spec.Index fell back to the stale cache.
+func refreshFailed(warnings []string) bool {
+	for _, w := range warnings {
+		if strings.HasPrefix(w, "refresh ") && strings.Contains(w, " failed: ") {
+			return true
+		}
+	}
+	return false
 }
