@@ -1,6 +1,8 @@
 package commands_test
 
 import (
+	"crypto/sha256"
+	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -35,6 +37,15 @@ func TestLinkCLI(t *testing.T) {
 		st, err := config.LoadState(cfg)
 		assert.NoError(t, err)
 		assert.Eq(t, "pet", st.Links["petctl"].Site)
+		assert.Eq(t, fmt.Sprintf("%x", sha256.Sum256(data)), st.Links["petctl"].Hash)
+		assert.Eq(t, path, st.Links["petctl"].Path)
+		if runtime.GOOS == "windows" {
+			cmdPath := path + ".cmd"
+			cmdData, err := os.ReadFile(cmdPath)
+			assert.Require(t, assert.NoError(t, err))
+			assert.Eq(t, fmt.Sprintf("%x", sha256.Sum256(cmdData)), st.Links["petctl.cmd"].Hash)
+			assert.Eq(t, cmdPath, st.Links["petctl.cmd"].Path)
+		}
 		code, out = runCommand(t, "link", "ls")
 		assert.Eq(t, 0, code)
 		assert.Contains(t, out, "petctl\tpet\t"+path)
