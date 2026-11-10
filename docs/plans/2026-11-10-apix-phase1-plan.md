@@ -499,3 +499,8 @@
 ## 进度记录
 
 （实施时填写：任务状态、实际路径、验证命令与结果、提交号。）
+
+- 2026-11-10 P3：两份 Swagger 2.0 已复制到 `<WP>/tmp/apix-specs/`。`big-v2.json` 有 30 个操作、2 个 securityDefinitions、`basePath: /`；`small-v2.json` 有 9 个操作，没有 host 和 basePath。两份都没有 operationId。
+- 2026-11-10 P4：用探针 `<WP>/tmp/apix-probe/` 验证，kin-openapi v0.153.0 能完成 `openapi2` 解析加 `openapi2conv.ToV3` 转换，两份的操作数、参数和请求体都正确，锁定 kin-openapi。
+- 2026-11-10 Corrective（T04，owner 内修正）：2.0 spec 没写 `schemes` 时，kin 转换出的 server 默认是 `https://`。T04 改为：从 URL 加载时取该 URL 的 scheme，从文件加载时用 `http`。验收不变。
+- 2026-11-10 派发：T01 交给 suga gpt-6.1-terra（job-20261110-223804-7b553a29，worktree `apix-t01`）。
