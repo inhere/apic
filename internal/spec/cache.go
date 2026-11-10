@@ -31,7 +31,7 @@ func Index(ctx context.Context, site string, src model.Source, dir string, opt I
 		index, err := (SimpleLoader{}).Load(ctx, src, dir)
 		return index, nil, err
 	}
-	if !simpleName.MatchString(site) {
+	if !model.ValidSiteName(site) {
 		return nil, nil, model.Errorf(model.ExitLocal, "invalid site name %q", site)
 	}
 	base := filepath.Join(dir, "cache", "specs", site)
@@ -123,7 +123,7 @@ func atomicCacheWrite(path string, data []byte) error {
 
 // Remove deletes the three files belonging to a site's cached definition.
 func Remove(dir, site string) error {
-	if !simpleName.MatchString(site) {
+	if !model.ValidSiteName(site) {
 		return model.Errorf(model.ExitLocal, "invalid site name %q", site)
 	}
 	base := filepath.Join(dir, "cache", "specs", site)

@@ -11,5 +11,6 @@ func newApp(info BuildInfo) *gcli.App {
 		app.Name = "apix"
 		app.Desc = "Call APIs using commands generated from API definitions"
 		app.Version = fmt.Sprintf("%s (commit: %s, built: %s)", info.Version, info.GitCommit, info.BuildDate)
+		app.Add(siteCommand(), opsCommand(), descCommand(), configCommand())
 	})
 }
