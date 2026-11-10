@@ -511,3 +511,8 @@
 - 2026-11-10 T04（cb48480）由 suga 实施。首轮因 web_fetch 触发 suga 注入防护误报而中断，已报给 suga 会话；续做时禁止联网。
 - 2026-11-10 Corrective（T04 验证）：petstore 公开样例的冒烟测试，改为默认跳过的 `TestRealSpec`（环境变量 `APIX_REAL_SPEC_DIR`），对两份真实 spec 做断言。结果：30 个和 9 个操作，命令名如 `back-cfg-get`、`inner-order-create`。验证范围比原来更贴近实际，验收不变。
 - 2026-11-10 派发：T05 交给 suga gpt-6.1-terra（job-20261110-234928-faac8686）。
+- 2026-11-11 T05（560bae8）合并。实施中两项由监督方决定：
+  - 站点名校验统一为 `model.ValidSiteName`，在设计正则基础上额外拒绝以 `-` 结尾和含 `--` 的名字，以较严格的一方为准（Corrective）。
+  - `site add --auth-for-spec` 本期不做：需要认证才能拉取的 spec，在 `sites/<name>.yaml` 中配置 `source.auth`，再用 `site refresh` 拉取。设计“拉取 spec 时的认证”仍然满足，只是少了 add 时的快捷选项（Corrective，验收不变）。
+  - 遗留的整理项：`site.go` 中的配置打码逻辑宜移入 `model.Redactor`。
+- 2026-11-11 T08 交给 sonnet 子 agent。同时并入两项 T05 遗留：显式 `site refresh` 失败时退出 1；读取有效缓存时不构造认证与 TLS 依赖。
