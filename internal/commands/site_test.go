@@ -182,7 +182,7 @@ func TestSiteFailureRecovery(t *testing.T) {
 func TestConfigPlainCredentials(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("APIX_CONFIG_DIR", dir)
-	cfg := "version: 1\nsites:\n  demo:\n    source: {type: openapi, url: 'https://example.test'}\n    auths:\n      demo: {type: basic, username: sample-user, password: sample-password, token: ab, value: sample-value, login: {body: {pin: 123, secret: sample-body}}}\n"
+	cfg := "version: 1\nsites:\n  demo:\n    source: {type: openapi, url: 'https://example.test/sample-password'}\n    auths:\n      demo: {type: basic, username: sample-user, password: sample-password, token: ab, value: sample-value, login: {body: {pin: 123, secret: sample-body}}}\n"
 	assert.NoError(t, os.WriteFile(filepath.Join(dir, "config.yaml"), []byte(cfg), 0600))
 	for _, args := range [][]string{{"site", "show", "demo"}, {"config", "show"}} {
 		t.Run(strings.Join(args, "-"), func(t *testing.T) {

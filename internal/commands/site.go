@@ -299,9 +299,12 @@ func writeJSON(value any) error {
 	return writeString(os.Stdout, "\n")
 }
 
-func maskCredential(value string) string {
+func maskCredential(value string, secrets *model.Secrets) string {
 	if value == "" {
 		return value
+	}
+	if !strings.Contains(value, "${env:") {
+		secrets.Add(value)
 	}
 	ref := regexp.MustCompile(`\$\{env:[^}]+\}`)
 	matches := ref.FindAllStringIndex(value, -1)
@@ -323,20 +326,20 @@ func maskCredential(value string) string {
 	return masked.String()
 }
 
-func maskBody(value any) any {
+func maskBody(value any, secrets *model.Secrets) any {
 	switch v := value.(type) {
 	case string:
-		return maskCredential(v)
+		return maskCredential(v, secrets)
 	case map[string]any:
 		copy := make(map[string]any, len(v))
 		for key, child := range v {
-			copy[key] = maskBody(child)
+			copy[key] = maskBody(child, secrets)
 		}
 		return copy
 	case []any:
 		copy := make([]any, len(v))
 		for i, child := range v {
-			copy[i] = maskBody(child)
+			copy[i] = maskBody(child, secrets)
 		}
 		return copy
 	default:
@@ -347,16 +350,16 @@ func maskBody(value any) any {
 	}
 }
 
-func maskedSite(site *model.Site) *model.Site {
+func maskedSite(site *model.Site, secrets *model.Secrets) *model.Site {
 	copy := *site
 	copy.Auths = make(map[string]model.AuthSpec, len(site.Auths))
 	for name, auth := range site.Auths {
-		auth.Token = maskCredential(auth.Token)
-		auth.Username = maskCredential(auth.Username)
-		auth.Password = maskCredential(auth.Password)
-		auth.Value = maskCredential(auth.Value)
+		auth.Token = maskCredential(auth.Token, secrets)
+		auth.Username = maskCredential(auth.Username, secrets)
+		auth.Password = maskCredential(auth.Password, secrets)
+		auth.Value = maskCredential(auth.Value, secrets)
 		if auth.Login.Body != nil {
-			auth.Login.Body = maskBody(auth.Login.Body).(map[string]any)
+			auth.Login.Body = maskBody(auth.Login.Body, secrets).(map[string]any)
 		}
 		copy.Auths[name] = auth
 	}
@@ -366,12 +369,12 @@ func maskedSite(site *model.Site) *model.Site {
 func writeYAML(d *wiring.Deps, value any) error {
 	switch v := value.(type) {
 	case *model.Site:
-		value = maskedSite(v)
+		value = maskedSite(v, d.Secrets)
 	case *model.Config:
 		copy := *v
 		copy.Sites = make(map[string]*model.Site, len(v.Sites))
 		for name, site := range v.Sites {
-			copy.Sites[name] = maskedSite(site)
+			copy.Sites[name] = maskedSite(site, d.Secrets)
 		}
 		value = &copy
 	}
