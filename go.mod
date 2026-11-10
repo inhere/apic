@@ -3,6 +3,7 @@ module github.com/inhere/apix
 go 1.25
 
 require (
+	github.com/goccy/go-yaml v1.18.0
 	github.com/gookit/gcli/v3 v3.8.6
 	github.com/gookit/goutil v0.8.6
 )
