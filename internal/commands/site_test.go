@@ -115,6 +115,21 @@ func TestSiteSimpleAndMissingBase(t *testing.T) {
 	assert.Contains(t, out, "job-info")
 	code, _ = runCommand(t, "site", "add", "no-source")
 	assert.Eq(t, 2, code)
+	data, err := os.ReadFile(fixture(t, "min-v2.json"))
+	assert.Require(t, assert.NoError(t, err))
+	withoutHost := strings.Replace(string(data), `"host": "demo.local",`, "", 1)
+	noHostFile := filepath.Join(dir, "no-host.json")
+	assert.NoError(t, os.WriteFile(noHostFile, []byte(withoutHost), 0600))
+	code, _ = runCommand(t, "site", "add", "no-host", "--spec", noHostFile)
+	assert.Eq(t, 1, code)
+	_, err = os.Stat(filepath.Join(dir, "sites", "no-host.yaml"))
+	assert.True(t, os.IsNotExist(err))
+	_, err = os.Stat(filepath.Join(dir, "cache", "specs", "no-host.raw"))
+	assert.True(t, os.IsNotExist(err))
+	code, _ = runCommand(t, "site", "add", "invalid", "--spec", filepath.Join(dir, "absent.json"))
+	assert.Eq(t, 1, code)
+	_, err = os.Stat(filepath.Join(dir, "sites", "invalid.yaml"))
+	assert.True(t, os.IsNotExist(err))
 }
 
 func TestConfigShowCheckAndUserSite(t *testing.T) {
@@ -144,6 +159,39 @@ func TestConfigShowCheckAndUserSite(t *testing.T) {
 	assert.Contains(t, out, "ok")
 }
 
+func TestSiteRefreshStaticAuth(t *testing.T) {
+	for _, tc := range []struct {
+		name, auth, header, value string
+	}{
+		{"basic", "{type: basic, username: demo, password: sample-secret}", "Authorization", "Basic ZGVtbzpzYW1wbGUtc2VjcmV0"},
+		{"apikey", "{type: apikey, in: header, name: X-Api-Key, value: sample-secret}", "X-Api-Key", "sample-secret"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			t.Setenv("APIX_CONFIG_DIR", dir)
+			data, err := os.ReadFile(fixture(t, "min-v2.json"))
+			assert.Require(t, assert.NoError(t, err))
+			calls := 0
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				calls++
+				if r.Header.Get(tc.header) != tc.value {
+					w.WriteHeader(http.StatusUnauthorized)
+					return
+				}
+				if _, err := w.Write(data); err != nil {
+					t.Error(err)
+				}
+			}))
+			defer server.Close()
+			cfg := fmt.Sprintf("version: 1\nsites:\n  demo:\n    source: {type: openapi, url: %q, auth: example}\n    auths:\n      example: %s\n", server.URL, tc.auth)
+			assert.NoError(t, os.WriteFile(filepath.Join(dir, "config.yaml"), []byte(cfg), 0600))
+			code, _ := runCommand(t, "site", "refresh", "demo")
+			assert.Eq(t, 0, code)
+			assert.Eq(t, 1, calls)
+		})
+	}
+}
+
 func TestSiteRefreshAuth(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("APIX_CONFIG_DIR", dir)
@@ -156,7 +204,9 @@ func TestSiteRefreshAuth(t *testing.T) {
 			w.WriteHeader(http.StatusUnauthorized)
 			return
 		}
-		_, _ = w.Write(data)
+		if _, err := w.Write(data); err != nil {
+			t.Error(err)
+		}
 	}))
 	defer server.Close()
 	config := fmt.Sprintf("version: 1\nsites:\n  demo:\n    source: {type: openapi, url: %q, auth: example}\n    auths:\n      example: {type: bearer, token: '${env:APIX_SAMPLE_TOKEN}'}\n", server.URL)
