@@ -1,0 +1,216 @@
+package spec_test
+
+import (
+	"context"
+	"errors"
+	"net/http"
+	"net/http/httptest"
+	"os"
+	"path/filepath"
+	"reflect"
+	"strings"
+	"sync/atomic"
+	"testing"
+	"time"
+
+	"github.com/gookit/goutil/x/assert"
+	"github.com/inhere/apix/internal/model"
+	"github.com/inhere/apix/internal/spec"
+)
+
+func TestOpenAPIEquivalent(t *testing.T) {
+	t.Setenv("APIX_CONFIG_DIR", t.TempDir())
+	var indexes []*model.Index
+	for _, file := range []string{"min-v2.json", "min-v3.json"} {
+		t.Run(file, func(t *testing.T) {
+			idx, err := (spec.OpenAPILoader{}).Load(context.Background(), model.Source{File: file}, "testdata")
+			assert.Require(t, assert.NoError(t, err))
+			assert.Eq(t, 4, len(idx.Ops))
+			assert.Eq(t, "/api/v1", idx.DefaultBasePath)
+			assert.Eq(t, "http://demo.local", idx.DefaultBaseURL)
+			indexes = append(indexes, idx)
+		})
+	}
+	assert.True(t, reflect.DeepEqual(indexes[0], indexes[1]))
+	for _, op := range indexes[0].Ops {
+		switch op.Name {
+		case "get-pet":
+			assert.Eq(t, "GET", op.Method)
+			assert.Eq(t, []model.Param{{Name: "id", In: "path", Required: true, Type: "integer"}, {Name: "verbose", In: "query", Type: "string", Enum: []string{"yes", "no"}}}, op.Params)
+			assert.Eq(t, []model.Field{{Name: "name", Type: "string", Required: true}}, op.Responses["200"].Fields)
+		case "create-pet":
+			assert.Eq(t, "json", op.Body.Type)
+			assert.Eq(t, []model.Field{{Name: "age", Type: "integer"}, {Name: "name", Type: "string", Required: true}}, op.Body.Schema.Fields)
+		case "submit-pet":
+			assert.Eq(t, "form", op.Body.Type)
+		case "pets-search":
+			assert.Eq(t, "Search pets", op.Summary)
+		}
+	}
+}
+
+func TestOpenAPIURLScheme(t *testing.T) {
+	t.Setenv("APIX_CONFIG_DIR", t.TempDir())
+	raw, err := os.ReadFile(filepath.Join("testdata", "min-v2.json"))
+	assert.Require(t, assert.NoError(t, err))
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { _, _ = w.Write(raw) }))
+	defer server.Close()
+	// URL scheme is used when Swagger 2.0 omits schemes, including on TLS fetches.
+	idx, _, err := spec.Index(context.Background(), "demo", model.Source{URL: server.URL}, t.TempDir(), spec.IndexOptions{Client: server.Client()})
+	assert.Require(t, assert.NoError(t, err))
+	assert.Eq(t, "https://demo.local", idx.DefaultBaseURL)
+}
+
+func TestFetchETag(t *testing.T) {
+	t.Setenv("APIX_CONFIG_DIR", t.TempDir())
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Eq(t, "Bearer demo", r.Header.Get("Authorization"))
+		if r.Header.Get("If-None-Match") == `"v1"` {
+			w.WriteHeader(http.StatusNotModified)
+			return
+		}
+		w.Header().Set("ETag", `"v1"`)
+		_, _ = w.Write([]byte("demo"))
+	}))
+	defer server.Close()
+	src := model.Source{URL: server.URL + "/openapi?secret=demo"}
+	for _, tc := range []struct {
+		name, etag string
+		modified   bool
+	}{{"first", "", false}, {"conditional", `"v1"`, true}} {
+		t.Run(tc.name, func(t *testing.T) {
+			raw, etag, notModified, err := spec.Fetch(context.Background(), src, t.TempDir(), spec.FetchOptions{ETag: tc.etag, Apply: func(r *http.Request) error { r.Header.Set("Authorization", "Bearer demo"); return nil }})
+			assert.Require(t, assert.NoError(t, err))
+			assert.Eq(t, tc.modified, notModified)
+			if !tc.modified {
+				assert.Eq(t, "demo", string(raw))
+				assert.Eq(t, `"v1"`, etag)
+			}
+		})
+	}
+}
+
+func TestFetchErrors(t *testing.T) {
+	t.Setenv("APIX_CONFIG_DIR", t.TempDir())
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusInternalServerError) }))
+	defer server.Close()
+	_, _, _, err := spec.Fetch(context.Background(), model.Source{URL: server.URL + "/spec?secret=demo"}, t.TempDir(), spec.FetchOptions{})
+	assertCode(t, err, model.ExitLocal)
+	assert.True(t, !strings.Contains(err.Error(), "secret"))
+	client := &http.Client{Transport: roundTripFail{}}
+	_, _, _, err = spec.Fetch(context.Background(), model.Source{URL: "http://demo.local/spec?secret=demo"}, t.TempDir(), spec.FetchOptions{Client: client})
+	assertCode(t, err, model.ExitNetwork)
+	assert.True(t, !strings.Contains(err.Error(), "secret"))
+}
+
+type roundTripFail struct{}
+
+func (roundTripFail) RoundTrip(*http.Request) (*http.Response, error) {
+	return nil, errors.New("network unavailable")
+}
+
+func TestCacheRefresh(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("APIX_CONFIG_DIR", dir)
+	raw, err := os.ReadFile(filepath.Join("testdata", "min-v3.json"))
+	assert.Require(t, assert.NoError(t, err))
+	var failing atomic.Bool
+	var calls atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls.Add(1)
+		if failing.Load() {
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		if r.Header.Get("If-None-Match") == `"v1"` {
+			w.WriteHeader(http.StatusNotModified)
+			return
+		}
+		w.Header().Set("ETag", `"v1"`)
+		_, _ = w.Write(raw)
+	}))
+	defer server.Close()
+	src := model.Source{URL: server.URL, TTL: time.Millisecond}
+	first, warnings, err := spec.Index(context.Background(), "demo", src, dir, spec.IndexOptions{})
+	assert.Require(t, assert.NoError(t, err))
+	assert.Eq(t, 0, len(warnings))
+	for _, suffix := range []string{".raw", ".index.json", ".meta.json"} {
+		_, err := os.Stat(filepath.Join(dir, "cache", "specs", "demo"+suffix))
+		assert.Require(t, assert.NoError(t, err))
+	}
+	src.TTL = time.Hour
+	cached, _, err := spec.Index(context.Background(), "demo", src, dir, spec.IndexOptions{})
+	assert.Require(t, assert.NoError(t, err))
+	assert.True(t, reflect.DeepEqual(first, cached))
+	assert.Eq(t, int32(1), calls.Load())
+	_, warnings, err = spec.Index(context.Background(), "demo", src, dir, spec.IndexOptions{Refresh: true})
+	assert.Require(t, assert.NoError(t, err))
+	assert.Eq(t, 0, len(warnings))
+	assert.Eq(t, int32(2), calls.Load())
+	failing.Store(true)
+	stale, warnings, err := spec.Index(context.Background(), "demo", src, dir, spec.IndexOptions{Refresh: true})
+	assert.Require(t, assert.NoError(t, err))
+	assert.True(t, reflect.DeepEqual(first, stale))
+	assert.Eq(t, 1, len(warnings))
+	assert.Require(t, assert.NoError(t, spec.Remove(dir, "demo")))
+	_, _, err = spec.Index(context.Background(), "demo", src, dir, spec.IndexOptions{})
+	assertCode(t, err, model.ExitLocal)
+	assert.True(t, strings.Contains(err.Error(), "run apix site refresh demo"))
+}
+
+func TestCacheSimpleNoCache(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("APIX_CONFIG_DIR", dir)
+	file := filepath.Join(dir, "demo.yaml")
+	assert.Require(t, assert.NoError(t, os.WriteFile(file, []byte("operations:\n  one: {get: /one}\n"), 0600)))
+	idx, _, err := spec.Index(context.Background(), "demo", model.Source{Type: "simple", File: file}, dir, spec.IndexOptions{})
+	assert.Require(t, assert.NoError(t, err))
+	assert.Eq(t, "one", idx.Ops[0].Name)
+	assert.Require(t, assert.NoError(t, os.WriteFile(file, []byte("operations:\n  two: {get: /two}\n"), 0600)))
+	idx, _, err = spec.Index(context.Background(), "demo", model.Source{Type: "simple", File: file}, dir, spec.IndexOptions{})
+	assert.Require(t, assert.NoError(t, err))
+	assert.Eq(t, "two", idx.Ops[0].Name)
+	_, err = os.Stat(filepath.Join(dir, "cache", "specs", "demo.index.json"))
+	assert.True(t, errors.Is(err, os.ErrNotExist))
+}
+
+func TestOpenAPIRealReadOnly(t *testing.T) {
+	paths := []struct {
+		name, env    string
+		count        int
+		emptyBaseURL bool
+	}{
+		{"big", "APIX_REAL_SPEC_BIG", 30, false},
+		{"small", "APIX_REAL_SPEC_SMALL", 9, true},
+	}
+	for _, tc := range paths {
+		if os.Getenv(tc.env) == "" {
+			continue
+		}
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv("APIX_CONFIG_DIR", t.TempDir())
+			idx, err := (spec.OpenAPILoader{}).Load(context.Background(), model.Source{File: os.Getenv(tc.env)}, t.TempDir())
+			assert.Require(t, assert.NoError(t, err))
+			assert.Eq(t, tc.count, len(idx.Ops))
+			if tc.emptyBaseURL {
+				assert.Eq(t, "", idx.DefaultBaseURL)
+			}
+			var names []string
+			for _, op := range idx.Ops {
+				if len(names) == 10 {
+					break
+				}
+				names = append(names, op.Name)
+			}
+			t.Logf("first 10 operations: %v", names)
+		})
+	}
+}
+
+func assertCode(t *testing.T, err error, code int) {
+	t.Helper()
+	assert.Require(t, assert.Error(t, err))
+	var coded *model.CodedError
+	assert.Require(t, assert.True(t, errors.As(err, &coded)))
+	assert.Eq(t, code, coded.Code())
+}
