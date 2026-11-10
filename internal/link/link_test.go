@@ -102,6 +102,6 @@ func TestLinkPassThrough(t *testing.T) {
 	assert.Require(t, assert.NoError(t, err), string(data))
 	args, err := os.ReadFile(output)
 	assert.Require(t, assert.NoError(t, err))
-	assert.Eq(t, "--api pet\n--env\nprod\nlist-users\n--x\na b\n", string(args))
-	assert.Eq(t, 6, len(strings.Split(strings.TrimSuffix(string(args), "\n"), "\n")))
+	assert.Eq(t, "--api\npet\n--env\nprod\nlist-users\n--x\na b\n", string(args))
+	assert.Eq(t, 7, len(strings.Split(strings.TrimSuffix(string(args), "\n"), "\n")))
 }

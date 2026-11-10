@@ -46,6 +46,29 @@ func TestLinkCLI(t *testing.T) {
 		assert.NoError(t, err)
 		assert.Len(t, st.Links, 0)
 	})
+	t.Run("changed script is not removed", func(t *testing.T) {
+		code, _ := runCommand(t, "link", "pet", "--name", "petctl")
+		assert.Eq(t, 0, code)
+		path := filepath.Join(scripts, "petctl")
+		assert.NoError(t, os.WriteFile(path, []byte("owner changed this"), 0600))
+		code, _ = runCommand(t, "link", "rm", "petctl")
+		assert.Eq(t, 1, code)
+		data, err := os.ReadFile(path)
+		assert.NoError(t, err)
+		assert.Eq(t, "owner changed this", string(data))
+		st, err := config.LoadState(cfg)
+		assert.NoError(t, err)
+		assert.Eq(t, "pet", st.Links["petctl"].Site)
+	})
+	t.Run("unowned script is not overwritten", func(t *testing.T) {
+		path := filepath.Join(scripts, "other")
+		assert.NoError(t, os.WriteFile(path, []byte("owner data"), 0600))
+		code, _ := runCommand(t, "link", "pet", "--name", "other")
+		assert.Eq(t, 1, code)
+		data, err := os.ReadFile(path)
+		assert.NoError(t, err)
+		assert.Eq(t, "owner data", string(data))
+	})
 	t.Run("validation", func(t *testing.T) {
 		for _, args := range [][]string{
 			{"link", "pet", "--name", "../x"},
