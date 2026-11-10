@@ -6,8 +6,8 @@ import (
 	"testing"
 
 	"github.com/gookit/goutil/x/assert"
-	"github.com/inhere/apix/internal/model"
-	"github.com/inhere/apix/internal/output"
+	"github.com/inhere/apic/internal/model"
+	"github.com/inhere/apic/internal/output"
 )
 
 func TestRender(t *testing.T) {

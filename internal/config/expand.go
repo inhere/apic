@@ -3,7 +3,7 @@ package config
 import (
 	"regexp"
 
-	"github.com/inhere/apix/internal/model"
+	"github.com/inhere/apic/internal/model"
 )
 
 var envRef = regexp.MustCompile(`\$\{env:([^}]+)\}`)

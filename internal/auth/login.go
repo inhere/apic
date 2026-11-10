@@ -12,7 +12,7 @@ import (
 	"time"
 
 	"github.com/gookit/goutil/maputil"
-	"github.com/inhere/apix/internal/model"
+	"github.com/inhere/apic/internal/model"
 )
 
 const dryToken = "<login-token>"

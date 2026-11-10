@@ -1,4 +1,4 @@
-// Package request builds, protects and executes HTTP requests for apix.
+// Package request builds, protects and executes HTTP requests for apic.
 package request
 
 import (
@@ -10,7 +10,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/inhere/apix/internal/model"
+	"github.com/inhere/apic/internal/model"
 )
 
 // Input is the user-supplied request description.

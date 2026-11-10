@@ -1,7 +1,7 @@
 <!-- template_id: design; template_version: 1.2.0 -->
-# apix：按 API 定义动态生成命令的通用 API CLI 设计
+# apic：按 API 定义动态生成命令的通用 API CLI 设计
 
-> 状态：Draft 0.3 / 已批准（0.3 的操作命名规则 D16 由用户 2026-11-10 批准：“命名按新规则，继续”）；0.2 已批准（用户 2026-11-10：“批准 apix 设计 0.2（接受未复核修订），Q1/Q2 按推荐，开始写一期计划”；Q1 不读当前目录 `.env`，Q2 位置参数与 `--api` 并存；设计批准只授权进入规划，不授权实施）
+> 状态：Draft 0.4 / 已批准（0.4 更名为 apic，用户 2026-11-11：“用 apic”）；0.3 已批准（0.3 的操作命名规则 D16 由用户 2026-11-10 批准：“命名按新规则，继续”）；0.2 已批准（用户 2026-11-10：“批准 apic 设计 0.2（接受未复核修订），Q1/Q2 按推荐，开始写一期计划”；Q1 不读当前目录 `.env`，Q2 位置参数与 `--api` 并存；设计批准只授权进入规划，不授权实施）
 
 ## 修订记录
 
@@ -10,6 +10,7 @@
 | 0.1 | 2026-11-10 | Claude（inhere 确定方向：自研、名为 apix、配置目录 `~/.config/apix` + 同目录 `.env`、支持自定义简单站点定义、写完整设想、实施先做一期） | 初稿：统一操作模型、OpenAPI 与简单定义两种来源、环境与认证分离、操作与原始路径两种调用、面向 agent 的约束、快捷命令、三期路线 |
 | 0.2 | 2026-11-10 | Claude | 处理第 1 轮合并轴评审（A1–A2 阻塞，B1–B9 纠正，S1–S5 建议）：token 缓存按 env 隔离并带指纹；站点写入改为只写 `sites/*.yaml`，简单定义移到 `defs/`；补 gcli 实测约束（原始路径参数、`--api` 改写、全局选项双注册、退出码统一）；补 URL 组成与 basePath；凭证不出主机（路径、重定向）；按来源打码；快捷命令的命名、哈希与 cmd 限制；写保护提到认证之前；登记 SR2003 偏离；`.env` 只解析不写进程环境 |
 | 0.3 | 2026-11-10 | Claude（inhere：“命名按新规则，继续”） | 没有 operationId 时的命令命名改为：不带方法、去掉公共前缀、路径参数不进入命令名，重名时按 方法前缀 → `-by-参数` → 序号 依次消歧（D16）。起因：内部 swaggo spec 都没有 operationId 且几乎全是 POST，原规则会让每个命令名都带 `post-` 前缀 |
+| 0.4 | 2026-11-11 | Claude（inhere：“想把名称改为 apic，更适合一点”“用 apic”） | 工具更名为 apic（D1）：模块 `github.com/inhere/apic`、二进制 `apic`、配置目录 `~/.config/apic`、环境变量前缀 `APIC_`、远端仓库 `inhere/apic`。已知 IBM API Connect 的工具也叫 `apic`，用户知情后确认 |
 
 > 仅语义变化递增版本；纯 identity/provenance/元数据纠正沿用原版本，并在 Git/进度记录中留痕。
 
@@ -32,11 +33,11 @@
 期望的最终效果：
 
 ```bash
-apix site add pet --spec https://pet.internal/swagger.json    # 注册一次
-apix pet list-users --page 2                                  # 按操作调用：参数来自定义，可补全
-apix pet -X POST /api/users -f name=tom                       # 按路径调用：自动带 base URL 与认证
-apix use pet --env test --auth admin                          # 切换环境与身份
-apix link pet --name petctl                                   # 生成快捷命令，之后用 petctl list-users
+apic site add pet --spec https://pet.internal/swagger.json    # 注册一次
+apic pet list-users --page 2                                  # 按操作调用：参数来自定义，可补全
+apic pet -X POST /api/users -f name=tom                       # 按路径调用：自动带 base URL 与认证
+apic use pet --env test --auth admin                          # 切换环境与身份
+apic link pet --name petctl                                   # 生成快捷命令，之后用 petctl list-users
 ```
 
 接口少的服务（例如 Jenkins，或只有几个接口的小工具服务）写一份 swagger 太麻烦。这类服务改用十几行 YAML 定义，用法和 swagger 站点完全一样。
@@ -54,14 +55,14 @@ apix link pet --name petctl                                   # 生成快捷命�
 | 名词 | 含义 |
 |---|---|
 | 站点（site） | 一个被调用的 API 服务，有唯一名字（如 `pet`、`jenkins`），对应一份定义来源和若干环境、认证 |
-| 定义来源（source） | 站点的接口描述：`openapi`（OpenAPI 3.x / Swagger 2.0，URL 或文件）或 `simple`（apix 自有的简单 YAML） |
+| 定义来源（source） | 站点的接口描述：`openapi`（OpenAPI 3.x / Swagger 2.0，URL 或文件）或 `simple`（apic 自有的简单 YAML） |
 | 操作（operation） | 一个可调用接口：方法、路径模板、参数、请求体类型。两种来源都转换成同一个操作模型 |
 | 操作索引（op index） | 从定义来源转换出的操作列表，缓存在本地，命令构建只读它 |
 | 环境（env） | 站点的一个部署实例：base URL、TLS 选项、是否受保护（如 dev/test/prod） |
 | 认证（auth） | 站点的一个身份：认证类型及其参数（如 admin/readonly/me） |
-| 当前选择（selection） | 每个站点当前用哪个 env 和 auth，由 `apix use` 写入 state 文件 |
+| 当前选择（selection） | 每个站点当前用哪个 env 和 auth，由 `apic use` 写入 state 文件 |
 | 密钥引用 | 配置里用 `${env:NAME}` 引用密钥，值来自 OS 环境变量或配置目录的 `.env` |
-| 快捷命令（link） | 为站点生成的小脚本（如 `petctl`），内部调用 `apix <site>` 并预带选项 |
+| 快捷命令（link） | 为站点生成的小脚本（如 `petctl`），内部调用 `apic <site>` 并预带选项 |
 
 ## 范围与非目标
 
@@ -84,7 +85,7 @@ apix link pet --name petctl                                   # 生成快捷命�
 - 不做多人共享的配置中心。
 - 不负责 spec 的自动发现：一期由用户给出 spec 地址。
 
-**受影响项目**：只有新仓库 `inhere-tools/apix`。依赖 gookit 的 `gcli`、`goutil`、`greq`，只做使用、不改动；需要改动时另立 issue。
+**受影响项目**：只有新仓库 `inhere-tools/apic`。依赖 gookit 的 `gcli`、`goutil`、`greq`，只做使用、不改动；需要改动时另立 issue。
 
 ## 已确认事实与规范
 
@@ -97,7 +98,7 @@ apix link pet --name petctl                                   # 生成快捷命�
   - 全局层出现未知选项时退出 0（`app.go:555-556`）。
   - 命令返回的普通 error 映射为 2（`app.go:571-575`）。
 - 配置目录与 `.env` 的先例在 gofer：配置目录为 `$GOFER_CONFIG_DIR` 或 `~/.config/gofer`，依次加载配置目录和当前目录的 `.env`，已导出的 OS 环境变量优先（`inhere-tools/gofer/internal/config/dotenv.go:40-72`）。
-- `goutil/envutil` 加载 `.env` 时会调用 `os.Setenv`，并把键名转成大写（`dotenv.go:137-143`）。所以 apix 只解析 `.env` 文件格式，得到的值存进自己的 map，不写进程环境，键名区分大小写（D14）。
+- `goutil/envutil` 加载 `.env` 时会调用 `os.Setenv`，并把键名转成大写（`dotenv.go:137-143`）。所以 apic 只解析 `.env` 文件格式，得到的值存进自己的 map，不写进程环境，键名区分大小写（D14）。
 - HTTP 客户端用 `gookit/greq`。
 - OpenAPI 解析候选是 kin-openapi：支持 3.x，`openapi2conv` 负责 2.0→3.0 转换。最终选型在计划阶段用两份真实内部 spec 核实（见 Q4）。
 - Restish 的能力与边界来自公开资料（pkg.go.dev、项目文档），只作参考。
@@ -116,25 +117,25 @@ argv ─▶ 预扫描站点名 ─▶ 读索引并注册动态命令 ─▶ gcli
 
 ### 配置目录
 
-默认为 `~/.config/apix`，可用 `$APIX_CONFIG_DIR` 覆盖：
+默认为 `~/.config/apic`，可用 `$APIC_CONFIG_DIR` 覆盖：
 
 ```
-~/.config/apix/
+~/.config/apic/
   config.yaml          # 用户编辑：全局默认、站点、环境、认证（不写明文密钥）
   .env                 # 密钥：KEY=VALUE；已导出的 OS 环境变量优先
   sites/<name>.yaml    # 一个文件一个站点（结构同 config.yaml 的 sites.<name>）；自动加载；site add 写在这里
   defs/<name>.yaml     # 简单定义文件
-  state.yaml           # apix 写入：各站点当前的 env/auth、已生成的快捷命令
+  state.yaml           # apic 写入：各站点当前的 env/auth、已生成的快捷命令
   cache/specs/<site>.* # 原始 spec、操作索引、ETag 与获取时间
   cache/tokens/<site>.<env>.<auth>.json   # login 缓存的 token，权限 0600；带指纹
 ```
 
 文件写入规则（D5）：
 
-- apix 永远不改写 `config.yaml`。
+- apic 永远不改写 `config.yaml`。
 - `site add` 只新建 `sites/<name>.yaml`。站点名已在 config.yaml 或 sites/ 中存在时报错。
-- `site rm` 只删 apix 自己建的 `sites/<name>.yaml`（由 state.yaml 记录），并清理对应缓存。写在 config.yaml 里的站点拒绝删除，提示用户手动编辑。
-- `apix use` 只写 state.yaml。
+- `site rm` 只删 apic 自己建的 `sites/<name>.yaml`（由 state.yaml 记录），并清理对应缓存。写在 config.yaml 里的站点拒绝删除，提示用户手动编辑。
+- `apic use` 只写 state.yaml。
 - state.yaml 和 token 缓存都先写临时文件再 rename，避免并发调用时写出半个文件。
 
 **token 缓存隔离**：
@@ -204,14 +205,14 @@ operations:
     body: {type: xml}                  # 请求体类型：json（默认）/ form / xml / raw
 ```
 
-简单定义只描述“怎么调用”，不描述响应结构，所以 `apix desc` 对这类站点只显示参数。
+简单定义只描述“怎么调用”，不描述响应结构，所以 `apic desc` 对这类站点只显示参数。
 
 ### 命令形态
 
 ```text
-apix [全局选项] <site> <operation> [参数选项]            # 按操作调用
-apix [全局选项] <site> -X <METHOD> <path> [请求选项]     # 按原始路径调用（-X 缺省为 GET）
-apix --api <site> ...                                    # 与上面等价的写法，供脚本和快捷命令用
+apic [全局选项] <site> <operation> [参数选项]            # 按操作调用
+apic [全局选项] <site> -X <METHOD> <path> [请求选项]     # 按原始路径调用（-X 缺省为 GET）
+apic --api <site> ...                                    # 与上面等价的写法，供脚本和快捷命令用
 ```
 
 **gcli 上的落地约定**（依据见“已确认事实”中的 gcli 实测）：
@@ -263,7 +264,7 @@ apix --api <site> ...                                    # 与上面等价的写
 
 - path、query、header 参数都映射为同名长选项 `--<name>`。
   - 这些选项在运行时注册（如 `StrOpt`），不绑定命令结构体。这是对 SR2003 的偏离，理由见 D15。静态的管理命令仍按 SR2003 写。
-  - 必填与类型由 apix 在发请求前自己校验，失败退出 1。gcli 的 Required 不用于这些选项。
+  - 必填与类型由 apic 在发请求前自己校验，失败退出 1。gcli 的 Required 不用于这些选项。
 - 以下情况不生成 `--<name>`，只能用 `-p name=value`（`-p` 对任何参数都可用）：
   - 参数名与全局选项冲突；
   - 参数名与 gcli 内置的 `-h/--help`、`-V/--version`、`--gen-completion` 冲突；
@@ -295,7 +296,7 @@ apix --api <site> ...                                    # 与上面等价的写
 参照 gofer（`inhere-tools/gofer/cmd/gofer/main.go` + `internal/commands/`）与 suga（`internal/wiring` + 分层守卫测试），目录结构无偏离（SR2004）。唯一的偏离是动态操作的选项不绑定命令结构体（SR2003，见 D15）。
 
 ```
-cmd/apix/main.go           # 只注入构建信息、创建 app、os.Exit(app.Run(nil))（GR107）
+cmd/apic/main.go           # 只注入构建信息、创建 app、os.Exit(app.Run(nil))（GR107）
 internal/commands/         # gcli 命令：site.go、ops.go、use.go、auth.go、link.go、config.go、dynamic.go
                            #   dynamic.go：把操作索引翻译成 gcli 命令与选项；只做翻译，不含请求逻辑
 internal/wiring/           # 构造 config、spec、auth、request 的依赖并连线（GR108）
@@ -347,7 +348,7 @@ sequenceDiagram
     participant A as auth
     participant R as request
     participant API as 服务
-    U->>C: apix pet list-users --page 2
+    U->>C: apic pet list-users --page 2
     C->>S: 读 pet 的操作索引（必要时刷新）
     C->>C: 解析 env/auth：单次选项 > state.yaml > default_*
     C->>R: 操作 + 参数 + env
@@ -367,7 +368,7 @@ sequenceDiagram
 
 - 认证配置了 `allow_methods`，而本次方法不在列表里：直接拒绝，退出码 6。
 - 环境标记了 `protect: true`，而方法不是 GET/HEAD/OPTIONS：要求带 `--yes`。
-  - 只有 stdin 和 stderr 都是终端、且没有设置 `APIX_NO_PROMPT` 时才交互确认。
+  - 只有 stdin 和 stderr 都是终端、且没有设置 `APIC_NO_PROMPT` 时才交互确认。
   - 其他情况（agent、管道）不加 `--yes` 一律拒绝，退出码 6。
 - 方法先统一转成大写再比较。
 - 写保护检查在认证之前，被拒绝的请求不会触发登录。login 请求本身不受写保护限制。
@@ -378,7 +379,7 @@ sequenceDiagram
 | 码 | 含义 |
 |---|---|
 | 0 | 2xx / 3xx |
-| 1 | 本地错误：配置、定义、apix 自己做的参数校验（必填、类型） |
+| 1 | 本地错误：配置、定义、apic 自己做的参数校验（必填、类型） |
 | 2 | 命令用法错误：选项解析失败、未知命令或操作、未知全局选项 |
 | 3 | 网络错误或超时（login 请求遇到网络错误也是 3） |
 | 4 | 4xx（401 重登后仍失败也是 4；login 请求返回 4xx 也是 4） |
@@ -387,18 +388,18 @@ sequenceDiagram
 
 实现方式：命令统一返回 gcli 能识别的带码错误（errorx），由 gcli 按其中的码退出。不返回普通 error，因为 gcli 会把它映射为 2。CLI 测试经真实分发逐一覆盖每个退出码。
 
-stdout 只输出响应体，其他信息都写 stderr，保证 `apix ... | jq` 这类管道可用。不论用哪种 `-o`，4xx/5xx 的响应体都原样输出到 stdout，方便 agent 读错误信息。
+stdout 只输出响应体，其他信息都写 stderr，保证 `apic ... | jq` 这类管道可用。不论用哪种 `-o`，4xx/5xx 的响应体都原样输出到 stdout，方便 agent 读错误信息。
 
 3xx 原样返回，不自动跟随重定向。这样凭证不会随重定向发到别的主机，307/308 也不会把 POST 重放到新地址。需要跟随时用二期的同主机跟随选项。
 
 ### 快捷命令
 
-`apix link pet --name petctl [--env prod --auth ro] [--dir <目录>]` 在 `link_dir` 下生成脚本：
+`apic link pet --name petctl [--env prod --auth ro] [--dir <目录>]` 在 `link_dir` 下生成脚本：
 
-- Linux/macOS：`petctl`，内容为 `exec apix --api pet --env prod --auth ro "$@"`，可执行。
-- Windows：`petctl.cmd`，内容为 `@apix --api pet --env prod --auth ro %*`；同时生成一份 sh 版，供 Git Bash 使用。
+- Linux/macOS：`petctl`，内容为 `exec apic --api pet --env prod --auth ro "$@"`，可执行。
+- Windows：`petctl.cmd`，内容为 `@apic --api pet --env prod --auth ro %*`；同时生成一份 sh 版，供 Git Bash 使用。
 
-脚本里写的是 `apix` 命令名，不写绝对路径，apix 升级不需要重新生成。
+脚本里写的是 `apic` 命令名，不写绝对路径，apic 升级不需要重新生成。
 
 约束：
 
@@ -406,8 +407,8 @@ stdout 只输出响应体，其他信息都写 stderr，保证 `apix ... | jq` �
 - **不固化 `--yes`**：快捷命令不能预带 `--yes`，写保护照常生效。
 - **生成记录**：state.yaml 记录每个快捷命令的路径和内容哈希。
 - **覆盖与删除**：
-  - 只有路径和内容哈希都与 state 记录一致的文件，才视为 apix 生成的。
-  - 目标文件已存在但不是 apix 生成的，不覆盖，直接报错。
+  - 只有路径和内容哈希都与 state 记录一致的文件，才视为 apic 生成的。
+  - 目标文件已存在但不是 apic 生成的，不覆盖，直接报错。
   - `link rm` 时文件内容与记录的哈希不一致，就拒绝删除。
 - **`.cmd` 的限制**：`%*` 展开后整行会再被 cmd 解析一次，参数里的 `&`、`|`、`"` 会出错。在 Windows 上传 JSON 请求体时，用 `-d @file` 或 sh 版快捷命令。帮助文本和 `link` 的输出里都写明这一点。
 
@@ -429,7 +430,7 @@ stdout 只输出响应体，其他信息都写 stderr，保证 `apix ... | jq` �
   - 原始路径只接受以单个 `/` 开头的路径，拒绝带 scheme 的完整 URL 和以 `//` 开头的路径。
   - 不自动跟随重定向（见“退出码”一节）。
   - 因此凭证只会发往当前 env 的 base_url 所在主机。
-- **不读当前目录的 `.env`**：这与 gofer 不同。agent 可能在任意仓库目录下运行 apix，读取当前目录的 `.env` 会让凭证随工作目录变化，容易误用他人的配置（见 Q1）。
+- **不读当前目录的 `.env`**：这与 gofer 不同。agent 可能在任意仓库目录下运行 apic，读取当前目录的 `.env` 会让凭证随工作目录变化，容易误用他人的配置（见 Q1）。
 - **TLS**：环境可设置 `insecure: true`（供内部自签证书用），每次请求都在 stderr 给出警告。还可设置 `ca_file`。
 - **数据**：所有数据都在配置目录内。删除 `cache/` 不丢配置，只是需要重新拉取定义、重新登录。
 - **回滚**：单二进制，没有服务端，也没有数据迁移；回滚就是换回旧版本二进制。`config.yaml` 带 `version: 1` 字段，以后格式不兼容时据此提示。
@@ -438,11 +439,11 @@ stdout 只输出响应体，其他信息都写 stderr，保证 `apix ... | jq` �
 
 | ID | 决策 | 理由 |
 |---|---|---|
-| D1 | 工具名 `apix`，新建独立仓库 `inhere-tools/apix` | 用户确定；发布前还要查 GitHub 与包管理器有无重名 |
+| D1 | 工具名 `apic`（0.4 起，原名 apix），独立仓库 `inhere-tools/apic`，远端 `inhere/apic` | 用户确定；IBM API Connect 的工具也叫 `apic`，同时安装时会撞名，用户已知情 |
 | D2 | 两种来源都转换成统一操作模型，下游只认模型 | 新增来源不影响下游；简单定义与 OpenAPI 用法一致 |
-| D3 | 配置目录默认 `~/.config/apix`（`$APIX_CONFIG_DIR` 覆盖），同目录 `.env` 放密钥，OS 环境变量优先 | 用户指定；与 gofer 一致 |
+| D3 | 配置目录默认 `~/.config/apic`（`$APIC_CONFIG_DIR` 覆盖），同目录 `.env` 放密钥，OS 环境变量优先 | 用户指定；与 gofer 一致 |
 | D4 | 环境与认证是两个独立维度；选择优先级：单次选项 > state.yaml > `default_*` | 同一身份经常要在多个环境之间切换；分开后组合不必一一写死 |
-| D5 | apix 不改写 config.yaml；`site add/rm` 只管理自己建的 `sites/<name>.yaml`，选择状态写 state.yaml；简单定义放 `defs/` | 在文件末尾追加会写错层级，并且无法支持 `site rm`；分文件管理才能安全增删 |
+| D5 | apic 不改写 config.yaml；`site add/rm` 只管理自己建的 `sites/<name>.yaml`，选择状态写 state.yaml；简单定义放 `defs/` | 在文件末尾追加会写错层级，并且无法支持 `site rm`；分文件管理才能安全增删 |
 | D6 | 同时支持按操作调用和按原始路径调用 | 前者有校验和补全；后者在定义缺失或写错时兜底 |
 | D7 | 站点名用位置参数，同时接受 `--api <site>` | 位置参数手打短；`--api` 用于快捷命令，与用户最初的设想一致 |
 | D8 | 动态命令只为 argv 中出现的那个站点构建，基于缓存的操作索引 | 启动开销与站点总数无关；不必每次解析完整 spec |
@@ -482,11 +483,11 @@ stdout 只输出响应体，其他信息都写 stderr，保证 `apix ... | jq` �
 - 定义覆盖（overlay）：重命名或隐藏操作，修正 spec 里的参数。
 - 输出过滤 `-q`、`-o yaml|table`。
 - multipart 文件上传、分页跟随。
-- `apix skill <site>`：生成供 agent 使用的 SKILL.md，可交给 skillc 安装。
+- `apic skill <site>`：生成供 agent 使用的 SKILL.md，可交给 skillc 安装。
 
 **三期**：
 
-- `apix mcp <site>`：把操作暴露为 MCP 工具，按 tag 或白名单裁剪。
+- `apic mcp <site>`：把操作暴露为 MCP 工具，按 tag 或白名单裁剪。
 - spec 自动发现：读 Link 头，探测常见路径。
 - 请求历史与重放。
 
@@ -498,7 +499,7 @@ stdout 只输出响应体，其他信息都写 stderr，保证 `apix ... | jq` �
 |---|---|---|
 | Q1 | 是否读取当前目录的 `.env`？ | 不读（D13）。项目级配置需求以后用 `--config` 显式指定 |
 | Q2 | 站点名同时支持位置参数和 `--api`，是否接受？ | 接受（D7） |
-| Q3 | 仓库远端：是否建 GitHub `inhere/apix`，是否公开？ | 一期先只在本地，发布前再定 |
+| Q3 | 仓库远端：是否建 GitHub `inhere/apic`，是否公开？ | 一期先只在本地，发布前再定 |
 | Q4 | OpenAPI 解析库：kin-openapi 还是 pb33f/libopenapi？ | 计划阶段用两份真实 spec 试解析后定，优先 kin-openapi（自带 2.0 转换） |
 
 Q1、Q2 会影响命令与安全契约，需要在批准设计时确认；Q3、Q4 不阻塞设计。
@@ -520,4 +521,4 @@ Q1、Q2 会影响命令与安全契约，需要在批准设计时确认；Q3、Q
 
 同时需要确认 Q1、Q2。设计批准只授权进入规划，不授权实施。
 
-批准语句示例：“批准 apix 设计 0.2（接受未复核修订），Q1/Q2 按推荐，开始写一期计划”。
+批准语句示例：“批准 apic 设计 0.2（接受未复核修订），Q1/Q2 按推荐，开始写一期计划”。

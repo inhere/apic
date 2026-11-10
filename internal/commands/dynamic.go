@@ -6,9 +6,9 @@ import (
 	"strings"
 
 	"github.com/gookit/gcli/v3"
-	"github.com/inhere/apix/internal/model"
-	"github.com/inhere/apix/internal/request"
-	"github.com/inhere/apix/internal/wiring"
+	"github.com/inhere/apic/internal/model"
+	"github.com/inhere/apic/internal/request"
+	"github.com/inhere/apic/internal/wiring"
 )
 
 // siteContext is everything the generated commands of one site need. It only
@@ -41,7 +41,7 @@ func siteDynamicCommand(sc *siteContext) *gcli.Command {
 	return c
 }
 
-// rawCall handles `apix <site> [-X METHOD] <path>`.
+// rawCall handles `apic <site> [-X METHOD] <path>`.
 func (sc *siteContext) rawCall(path string) error {
 	so := sc.so
 	if path == "" {

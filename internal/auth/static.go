@@ -3,7 +3,7 @@ package auth
 import (
 	"net/http"
 
-	"github.com/inhere/apix/internal/model"
+	"github.com/inhere/apic/internal/model"
 )
 
 func (p *Provider) applyStatic(req *http.Request) error {

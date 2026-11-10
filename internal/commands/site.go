@@ -16,11 +16,11 @@ import (
 
 	"github.com/goccy/go-yaml"
 	"github.com/gookit/gcli/v3"
-	"github.com/inhere/apix/internal/config"
-	"github.com/inhere/apix/internal/model"
-	"github.com/inhere/apix/internal/output"
-	"github.com/inhere/apix/internal/spec"
-	"github.com/inhere/apix/internal/wiring"
+	"github.com/inhere/apic/internal/config"
+	"github.com/inhere/apic/internal/model"
+	"github.com/inhere/apic/internal/output"
+	"github.com/inhere/apic/internal/spec"
+	"github.com/inhere/apic/internal/wiring"
 )
 
 type siteAddOptions struct{ spec, def, baseURL string }
@@ -129,7 +129,7 @@ func addSite(name string, opt *siteAddOptions) (result error) {
 	if err := os.MkdirAll(d.Dir, 0700); err != nil {
 		return localError(err)
 	}
-	tmp, err := os.MkdirTemp(d.Dir, ".apix-index-")
+	tmp, err := os.MkdirTemp(d.Dir, ".apic-index-")
 	if err != nil {
 		return localError(err)
 	}

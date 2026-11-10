@@ -7,7 +7,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/inhere/apix/internal/model"
+	"github.com/inhere/apic/internal/model"
 )
 
 // CheckProtect enforces allow_methods and protected-environment write confirmation.
@@ -30,7 +30,7 @@ func CheckProtect(method string, env model.Env, auth model.AuthSpec, yes, tty bo
 	if !env.Protect || slices.Contains([]string{http.MethodGet, http.MethodHead, http.MethodOptions}, method) || yes {
 		return nil
 	}
-	if tty && os.Getenv("APIX_NO_PROMPT") == "" && prompt != nil {
+	if tty && os.Getenv("APIC_NO_PROMPT") == "" && prompt != nil {
 		if prompt(fmt.Sprintf("%s on a protected environment, continue?", method)) {
 			return nil
 		}

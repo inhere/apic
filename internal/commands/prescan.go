@@ -4,7 +4,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/inhere/apix/internal/model"
+	"github.com/inhere/apic/internal/model"
 )
 
 // GlobalSpec declares the global option names (with their dashes) and whether

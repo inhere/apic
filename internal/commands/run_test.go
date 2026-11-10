@@ -4,11 +4,11 @@ import (
 	"testing"
 
 	"github.com/gookit/goutil/x/assert"
-	"github.com/inhere/apix/internal/commands"
+	"github.com/inhere/apic/internal/commands"
 )
 
 func TestRun(t *testing.T) {
-	t.Setenv("APIX_CONFIG_DIR", t.TempDir())
+	t.Setenv("APIC_CONFIG_DIR", t.TempDir())
 	t.Run("version", func(t *testing.T) {
 		assert.Eq(t, 0, commands.Run(commands.BuildInfo{Version: "t"}, []string{"--version"}))
 	})

@@ -6,14 +6,14 @@ import (
 
 	"github.com/gookit/gcli/v3"
 	"github.com/gookit/gcli/v3/gevent"
-	"github.com/inhere/apix/internal/model"
+	"github.com/inhere/apic/internal/model"
 )
 
 // newApp builds the application with the static commands. red masks secrets in
 // any error gcli prints.
 func newApp(info BuildInfo, g *globalOpts, red *model.Redactor) *gcli.App {
 	return gcli.NewApp(func(app *gcli.App) {
-		app.Name = "apix"
+		app.Name = "apic"
 		app.Desc = "Call APIs using commands generated from API definitions"
 		app.Version = fmt.Sprintf("%s (commit: %s, built: %s)", info.Version, info.GitCommit, info.BuildDate)
 		// Replace gcli's default handler, which prints errors on stdout; stdout is

@@ -10,7 +10,7 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/inhere/apix/internal/model"
+	"github.com/inhere/apic/internal/model"
 )
 
 // IndexOptions configures cache refresh and the caller-owned fetch transport.
@@ -54,7 +54,7 @@ func Index(ctx context.Context, site string, src model.Source, dir string, opt I
 		if haveOld {
 			return &old, []string{fmt.Sprintf("refresh %s failed: %v; using cached index", site, err)}, nil
 		}
-		return nil, nil, model.Errorf(model.ExitLocal, "no cached index for %s; run apix site refresh %s: %v", site, site, err)
+		return nil, nil, model.Errorf(model.ExitLocal, "no cached index for %s; run apic site refresh %s: %v", site, site, err)
 	}
 	raw, etag, notModified, err := Fetch(ctx, src, dir, FetchOptions{Client: opt.Client, ETag: meta.ETag, Apply: opt.Apply})
 	if err != nil {
@@ -102,7 +102,7 @@ func Index(ctx context.Context, site string, src model.Source, dir string, opt I
 }
 
 func atomicCacheWrite(path string, data []byte) error {
-	file, err := os.CreateTemp(filepath.Dir(path), ".apix-*")
+	file, err := os.CreateTemp(filepath.Dir(path), ".apic-*")
 	if err != nil {
 		return err
 	}

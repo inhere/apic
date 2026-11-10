@@ -9,11 +9,11 @@ import (
 	"sync"
 	"time"
 
-	"github.com/inhere/apix/internal/auth"
-	"github.com/inhere/apix/internal/config"
-	"github.com/inhere/apix/internal/model"
-	"github.com/inhere/apix/internal/request"
-	"github.com/inhere/apix/internal/spec"
+	"github.com/inhere/apic/internal/auth"
+	"github.com/inhere/apic/internal/config"
+	"github.com/inhere/apic/internal/model"
+	"github.com/inhere/apic/internal/request"
+	"github.com/inhere/apic/internal/spec"
 )
 
 // Deps contains the configuration and shared secret registry for one command.

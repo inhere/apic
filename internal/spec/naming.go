@@ -6,7 +6,7 @@ import (
 	"strings"
 	"unicode"
 
-	"github.com/inhere/apix/internal/model"
+	"github.com/inhere/apic/internal/model"
 )
 
 // AssignNames assigns unique command names, returning a warning for each

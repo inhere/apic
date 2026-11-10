@@ -10,7 +10,7 @@ import (
 	"regexp"
 	"runtime"
 
-	"github.com/inhere/apix/internal/model"
+	"github.com/inhere/apic/internal/model"
 )
 
 // Record identifies one generated file, its contents, and its target site.

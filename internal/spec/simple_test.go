@@ -9,13 +9,13 @@ import (
 	"testing"
 
 	"github.com/gookit/goutil/x/assert"
-	"github.com/inhere/apix/internal/model"
-	"github.com/inhere/apix/internal/spec"
+	"github.com/inhere/apic/internal/model"
+	"github.com/inhere/apic/internal/spec"
 )
 
 func TestSimpleExample(t *testing.T) {
 	dir := t.TempDir()
-	t.Setenv("APIX_CONFIG_DIR", dir)
+	t.Setenv("APIC_CONFIG_DIR", dir)
 	data, err := os.ReadFile(filepath.Join("testdata", "jenkins.yaml"))
 	assert.Require(t, assert.NoError(t, err))
 	file := filepath.Join(dir, "demo.yaml")
@@ -55,7 +55,7 @@ func TestSimpleVariants(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			dir := t.TempDir()
-			t.Setenv("APIX_CONFIG_DIR", dir)
+			t.Setenv("APIC_CONFIG_DIR", dir)
 			file := filepath.Join(dir, "demo.yaml")
 			assert.Require(t, assert.NoError(t, os.WriteFile(file, []byte(tc.yaml), 0600)))
 			index, err := (spec.SimpleLoader{}).Load(context.Background(), model.Source{File: file}, dir)

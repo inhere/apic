@@ -12,7 +12,7 @@ import (
 	"github.com/getkin/kin-openapi/openapi2conv"
 	"github.com/getkin/kin-openapi/openapi3"
 	"github.com/goccy/go-yaml"
-	"github.com/inhere/apix/internal/model"
+	"github.com/inhere/apic/internal/model"
 )
 
 // OpenAPILoader loads Swagger 2.0 and OpenAPI 3.x definitions.

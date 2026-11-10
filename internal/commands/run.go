@@ -6,8 +6,8 @@ import (
 	"slices"
 	"sort"
 
-	"github.com/inhere/apix/internal/model"
-	"github.com/inhere/apix/internal/wiring"
+	"github.com/inhere/apic/internal/model"
+	"github.com/inhere/apic/internal/wiring"
 )
 
 // BuildInfo contains values supplied at build time.

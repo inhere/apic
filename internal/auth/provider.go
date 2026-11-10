@@ -12,7 +12,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/inhere/apix/internal/model"
+	"github.com/inhere/apic/internal/model"
 )
 
 // Deps are the collaborators injected by the wiring layer.

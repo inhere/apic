@@ -10,12 +10,12 @@ import (
 	"testing"
 
 	"github.com/gookit/goutil/x/assert"
-	"github.com/inhere/apix/internal/config"
+	"github.com/inhere/apic/internal/config"
 )
 
 func TestLinkCLI(t *testing.T) {
 	cfg := t.TempDir()
-	t.Setenv("APIX_CONFIG_DIR", cfg)
+	t.Setenv("APIC_CONFIG_DIR", cfg)
 	scripts := filepath.Join(t.TempDir(), "links")
 	yaml := "version: 1\ndefaults:\n  link_dir: " + scripts + "\nsites:\n  pet:\n    source:\n      type: simple\n    envs:\n      prod:\n        base_url: http://example.test\n    auths:\n      ro:\n        type: bearer\n        token: dummy\n"
 	// Quote Windows paths in YAML so backslashes are not interpreted as escapes.

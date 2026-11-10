@@ -4,8 +4,8 @@ import (
 	"testing"
 
 	"github.com/gookit/goutil/x/assert"
-	"github.com/inhere/apix/internal/model"
-	"github.com/inhere/apix/internal/spec"
+	"github.com/inhere/apic/internal/model"
+	"github.com/inhere/apic/internal/spec"
 )
 
 func TestNaming(t *testing.T) {
@@ -37,7 +37,7 @@ func TestNaming(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			t.Setenv("APIX_CONFIG_DIR", t.TempDir())
+			t.Setenv("APIC_CONFIG_DIR", t.TempDir())
 			warnings := spec.AssignNames(tc.ops, tc.ids)
 			names := make([]string, len(tc.ops))
 			for i := range tc.ops {

@@ -14,7 +14,7 @@ import (
 
 	"github.com/gookit/color"
 	"github.com/gookit/goutil/x/assert"
-	"github.com/inhere/apix/internal/commands"
+	"github.com/inhere/apic/internal/commands"
 )
 
 // recorded is one request seen by the fake API.
@@ -106,7 +106,7 @@ const petDef = `operations:
 func setup(t *testing.T) (*fakeAPI, string) {
 	t.Helper()
 	dir := t.TempDir()
-	t.Setenv("APIX_CONFIG_DIR", dir)
+	t.Setenv("APIC_CONFIG_DIR", dir)
 	f := newFakeAPI(t)
 	def := filepath.Join(dir, "pet-def.yaml")
 	assert.NoError(t, os.WriteFile(def, []byte(petDef), 0600))
@@ -121,20 +121,20 @@ sites:
       alt: {base_url: %q, base_path: /alt}
       prod: {base_url: %q, protect: true}
     auths:
-      tok: {type: bearer, token: '${env:APIX_T_TOKEN}'}
-      ro: {type: bearer, token: '${env:APIX_T_TOKEN}', allow_methods: [GET]}
+      tok: {type: bearer, token: '${env:APIC_T_TOKEN}'}
+      ro: {type: bearer, token: '${env:APIC_T_TOKEN}', allow_methods: [GET]}
       lg:
         type: login
         login:
           method: POST
           path: /api/login
-          body: {username: u, password: '${env:APIX_T_PASS}'}
+          body: {username: u, password: '${env:APIC_T_PASS}'}
         token: {from: body, path: data.token}
         expires: {from: body, path: data.expires_in}
         apply: {header: Authorization, value: "Bearer {token}"}
 `, def, f.srv.URL, f.srv.URL, f.srv.URL)
 	assert.NoError(t, os.WriteFile(filepath.Join(dir, "config.yaml"), []byte(cfg), 0600))
-	assert.NoError(t, os.WriteFile(filepath.Join(dir, ".env"), []byte("APIX_T_TOKEN=tok-secret-value\nAPIX_T_PASS=pass-secret-value\n"), 0600))
+	assert.NoError(t, os.WriteFile(filepath.Join(dir, ".env"), []byte("APIC_T_TOKEN=tok-secret-value\nAPIC_T_PASS=pass-secret-value\n"), 0600))
 	return f, dir
 }
 
@@ -374,7 +374,7 @@ func TestDynamicBasePathOpenAPI(t *testing.T) {
 	assert.Eq(t, 1, code)
 	assert.Eq(t, n, len(f.requests()))
 	// env base_path overrides the definition's.
-	cfgFile := filepath.Join(os.Getenv("APIX_CONFIG_DIR"), "sites", "demo.yaml")
+	cfgFile := filepath.Join(os.Getenv("APIC_CONFIG_DIR"), "sites", "demo.yaml")
 	data, err := os.ReadFile(cfgFile)
 	assert.NoError(t, err)
 	data = []byte(strings.Replace(string(data), "base_url:", "base_path: /override\n    base_url:", 1))
@@ -596,7 +596,7 @@ func TestAuthCmd(t *testing.T) {
 
 func TestDynamicBrokenConfig(t *testing.T) {
 	dir := t.TempDir()
-	t.Setenv("APIX_CONFIG_DIR", dir)
+	t.Setenv("APIC_CONFIG_DIR", dir)
 	assert.NoError(t, os.WriteFile(filepath.Join(dir, "config.yaml"), []byte("version: 1\nsites: [broken\n"), 0600))
 	// management commands that do not need the configuration still work.
 	code, out, _ := runIO(t, "config", "path")

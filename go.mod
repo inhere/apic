@@ -1,4 +1,4 @@
-module github.com/inhere/apix
+module github.com/inhere/apic
 
 go 1.25
 

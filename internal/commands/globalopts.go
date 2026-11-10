@@ -5,7 +5,7 @@ import (
 	"time"
 
 	"github.com/gookit/gcli/v3/gflag"
-	"github.com/inhere/apix/internal/model"
+	"github.com/inhere/apic/internal/model"
 )
 
 // globalOpts holds the global options. The same fields are bound on the app

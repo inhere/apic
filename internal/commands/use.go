@@ -5,9 +5,9 @@ import (
 	"os"
 
 	"github.com/gookit/gcli/v3"
-	"github.com/inhere/apix/internal/config"
-	"github.com/inhere/apix/internal/model"
-	"github.com/inhere/apix/internal/wiring"
+	"github.com/inhere/apic/internal/config"
+	"github.com/inhere/apic/internal/model"
+	"github.com/inhere/apic/internal/wiring"
 )
 
 // bindSelection registers --env and --auth on a static command, sharing the global fields.

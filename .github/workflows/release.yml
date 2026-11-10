@@ -38,7 +38,7 @@ jobs:
       - name: Build bin package
         run: |
           make build-all
-          ./dist/apix-linux-amd64 --version
+          ./dist/apic-linux-amd64 --version
 
       - name: Generate changelog
         run: |

@@ -6,11 +6,11 @@ import (
 	"testing"
 
 	"github.com/gookit/goutil/x/assert"
-	"github.com/inhere/apix/internal/model"
+	"github.com/inhere/apic/internal/model"
 )
 
 func TestSecretsAndRedactor(t *testing.T) {
-	t.Setenv("APIX_CONFIG_DIR", t.TempDir())
+	t.Setenv("APIC_CONFIG_DIR", t.TempDir())
 	var secrets model.Secrets
 	secrets.Add("")
 	secrets.Add("abc")
@@ -27,7 +27,7 @@ func TestSecretsAndRedactor(t *testing.T) {
 }
 
 func TestRedactHeadersCopies(t *testing.T) {
-	t.Setenv("APIX_CONFIG_DIR", t.TempDir())
+	t.Setenv("APIC_CONFIG_DIR", t.TempDir())
 	var secrets model.Secrets
 	secrets.Add("demo-secret")
 	header := http.Header{"Authorization": {"Bearer abc"}, "Cookie": {"sid=abc"}, "X-Demo": {"demo-secret", "ordinary"}}

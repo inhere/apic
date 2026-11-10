@@ -12,12 +12,12 @@ import (
 	"github.com/gookit/goutil/x/assert"
 )
 
-const apixModule = "github.com/inhere/apix/"
+const apicModule = "github.com/inhere/apic/"
 
 // layeringTable follows the approved phase-one plan's layering table. Entries
 // for future packages are intentional; only packages that exist are checked.
 var layeringTable = map[string][]string{
-	"cmd/apix":          {"internal/commands"},
+	"cmd/apic":          {"internal/commands"},
 	"internal/model":    {},
 	"internal/config":   {"internal/model"},
 	"internal/spec":     {"internal/model"},
@@ -36,7 +36,7 @@ type pkgEdges struct {
 
 // TestLayering rejects unregistered production packages and dependency edges.
 func TestLayering(t *testing.T) {
-	t.Setenv("APIX_CONFIG_DIR", t.TempDir())
+	t.Setenv("APIC_CONFIG_DIR", t.TempDir())
 	pkgs := listInternalEdges(t)
 	var bad []string
 	for _, p := range pkgs {
@@ -78,13 +78,13 @@ func listInternalEdges(t *testing.T) []pkgEdges {
 		if len(fields) == 0 {
 			continue
 		}
-		p := pkgEdges{name: strings.TrimPrefix(fields[0], apixModule)}
+		p := pkgEdges{name: strings.TrimPrefix(fields[0], apicModule)}
 		if p.name == "internal" {
 			continue // this test-only package
 		}
 		for _, imp := range fields[1:] {
-			if strings.HasPrefix(imp, apixModule) {
-				p.deps = append(p.deps, strings.TrimPrefix(imp, apixModule))
+			if strings.HasPrefix(imp, apicModule) {
+				p.deps = append(p.deps, strings.TrimPrefix(imp, apicModule))
 			} else if p.name == "internal/model" && strings.Contains(strings.SplitN(imp, "/", 2)[0], ".") && imp != "github.com/gookit/goutil/errorx" {
 				p.deps = append(p.deps, imp)
 			}

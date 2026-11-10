@@ -6,7 +6,7 @@ import (
 	"net/http"
 	"sort"
 
-	"github.com/inhere/apix/internal/model"
+	"github.com/inhere/apic/internal/model"
 )
 
 // Result is the output layer's view of a finished request; it keeps this

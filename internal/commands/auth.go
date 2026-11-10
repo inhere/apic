@@ -12,9 +12,9 @@ import (
 	"time"
 
 	"github.com/gookit/gcli/v3"
-	"github.com/inhere/apix/internal/auth"
-	"github.com/inhere/apix/internal/model"
-	"github.com/inhere/apix/internal/wiring"
+	"github.com/inhere/apic/internal/auth"
+	"github.com/inhere/apic/internal/model"
+	"github.com/inhere/apic/internal/wiring"
 )
 
 func authCommand(g *globalOpts) *gcli.Command {

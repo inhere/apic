@@ -5,7 +5,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/inhere/apix/internal/model"
+	"github.com/inhere/apic/internal/model"
 )
 
 // Check reports credentials written directly into the configuration.

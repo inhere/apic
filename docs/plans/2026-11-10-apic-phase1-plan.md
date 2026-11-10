@@ -1,7 +1,7 @@
 <!-- template_id: plan; template_version: 1.3.0 -->
-# apix 一期（MVP）实施计划
+# apic 一期（MVP）实施计划
 
-> 状态：Draft 0.3 / 已批准（0.3 只随设计 0.3 改了 T03 的命名规则，用户 2026-11-10：“命名按新规则，继续”）；0.2 已批准（用户 2026-11-10：“批准 apix 一期计划 0.2（接受未复核修订）；开始实施；建好gofer plan 跟进，简单的任务可以通过gofer 可以交给 suga gpt 模型做”）
+> 状态：Draft 0.4 / 已批准（0.4 只做更名，随设计 0.4，用户 2026-11-11：“用 apic”）；0.3 已批准（0.3 只随设计 0.3 改了 T03 的命名规则，用户 2026-11-10：“命名按新规则，继续”）；0.2 已批准（用户 2026-11-10：“批准 apic 一期计划 0.2（接受未复核修订）；开始实施；建好gofer plan 跟进，简单的任务可以通过gofer 可以交给 suga gpt 模型做”）
 
 ## 修订记录
 
@@ -10,13 +10,14 @@
 | 0.1 | 2026-11-10 | Claude（inhere：“批准 apix 设计 0.2（接受未复核修订），Q1/Q2 按推荐，开始写一期计划”） | 初稿：4 个波次、10 个任务，覆盖设计 0.2“分期路线·一期”的 8 项 |
 | 0.2 | 2026-11-10 | Claude | 处理合并轴评审（B1–B2 阻塞，C1–C11 纠正，S1–S4 建议）：统一入口 `commands.Run(info, args)`；A4 主机步骤固定为只写 `<WP>/tmp`；领域包只依赖 model（打码器、密钥登记表放进 model，request 自己声明 Authorizer 接口）；编排归属 `request.Execute`；`-H` 不重复注册；`--api` 后跟未配置站点时退出 2；dry-run 不触发登录；base_path 来源与覆盖；补齐验证项；TLS 并入一期；新增“偏离登记” |
 | 0.3 | 2026-11-10 | Claude | T03 的命名规则按设计 0.3 D16 修改，验证用例相应更新 |
+| 0.4 | 2026-11-11 | Claude | 随设计 0.4 更名为 apic：代码、命令名、配置目录、环境变量、文件名同步替换；修订记录与进度记录中的历史名称保留原样 |
 
 > 仅语义变化递增版本；纯 identity/provenance/元数据纠正沿用原版本，并在 Git/进度记录中留痕。
 
 ## 规划工作声明
 
 - 思考模式：`RIGOROUS`（SR1408）。
-- 核心目标：交付 apix 一期，即设计 0.2“分期路线·一期”的第 1–8 项，并通过一期验收。
+- 核心目标：交付 apic 一期，即设计 0.2“分期路线·一期”的第 1–8 项，并通过一期验收。
 - Scope freeze：只做一期 8 项；二、三期的内容（补全、oauth2、exec、overlay、`-q`、`yaml/table`、multipart、分页、skill、MCP）一律不做，实施中发现需要也只记为 deferred。
 - 一期还包括设计“安全”一节中的 TLS `insecure` 与 `ca_file`（放在 T06）。
 - 评审预算：按 SR1409 属低暴露（新仓库，未发布、无用户），合并轴评审封顶一轮。
@@ -24,7 +25,7 @@
 
 ## 目标与完成定义
 
-**目标**：用户能用一个 `apix` 二进制注册 Swagger 2.0/OAS3 站点和简单定义站点，按操作或按原始路径发请求，切换环境与认证，并生成快捷命令。行为符合设计 0.2 的命令形态、退出码契约、写保护和打码规则。
+**目标**：用户能用一个 `apic` 二进制注册 Swagger 2.0/OAS3 站点和简单定义站点，按操作或按原始路径发请求，切换环境与认证，并生成快捷命令。行为符合设计 0.2 的命令形态、退出码契约、写保护和打码规则。
 
 **完成定义（一期验收）**：
 
@@ -49,7 +50,7 @@
 
 ## 范围、排除项与授权
 
-**范围**：仓库 `inhere-tools/apix`（Git root）下的全部代码与文档。
+**范围**：仓库 `inhere-tools/apic`（Git root）下的全部代码与文档。
 
 **排除项**：
 
@@ -64,14 +65,14 @@
 - A1 要读取真实 spec，A4 要在主机上执行，这些是本计划仅有的机器外或主机动作：
   - 都是只读的，或只写 `<WP>/tmp/`；
   - 不修改任何业务服务；
-  - 不需要真实凭证。如果 A1 的 spec 地址需要认证，由用户把 spec 文件放到 `<WP>/tmp/apix-specs/` 下，计划不处理真实密钥。
+  - 不需要真实凭证。如果 A1 的 spec 地址需要认证，由用户把 spec 文件放到 `<WP>/tmp/apic-specs/` 下，计划不处理真实密钥。
 
 - `host_or_non_offline_action=REQUIRED`
 
 ## 输入与批准证据
 
-- 设计：`docs/design/apix-design.md` Draft 0.3，已批准（0.3 只改了命名规则 D16）。
-  - 批准原话（2026-11-10）：“批准 apix 设计 0.2（接受未复核修订），Q1/Q2 按推荐，开始写一期计划”。
+- 设计：`docs/design/apic-design.md` Draft 0.3，已批准（0.3 只改了命名规则 D16）。
+  - 批准原话（2026-11-10）：“批准 apic 设计 0.2（接受未复核修订），Q1/Q2 按推荐，开始写一期计划”。
   - 记录批准的提交：`2cc8022`。
 - 设计第 1 轮评审发现 A1–A2、B1–B9、S1–S5，已全部并入 0.2。本计划按 0.2 的条款执行，不重述理由。
 - 跟踪 issue：`my-tools-thv4`；gcli 退出码问题：`my-tools-kb4d`。
@@ -89,14 +90,14 @@
 | CAP-05 | `.env` 解析（不写进程环境、键名区分大小写） | goutil/envutil `Dotenv` | 否：解析入口只有 `parseAndSetEnv`，会 Setenv 并转大写（`dotenv.go:127-143`） | 在 `internal/config` 内写一个最小解析函数（支持 `KEY=VALUE`、`#` 注释、引号），约 40 行 | OWNER_EXTENSION | envutil 没有不写进程环境的公开解析入口 | 只在 `internal/config` 里，不另成包 |
 | CAP-06 | 按路径从 JSON 取值（login 取 token） | goutil/maputil `GetFromAny` | 是 | 无 | DIRECT_REUSE | none | 无 |
 | CAP-07 | 测试断言 | goutil/x/assert（SR2002） | 是 | 无 | DIRECT_REUSE | none | 无 |
-| CAP-08 | 分层守卫测试 | xhen 的 `internal/layering_test.go`（`go list` 导入图对照表） | 照搬写法 | 换成 apix 的分层表 | DIRECT_REUSE | none | 无 |
-| CAP-09 | 按 API 定义动态生成命令的通用 API CLI 本体 | Restish、invgate-cli、openapi-to-cli、climate、Speakeasy/Stainless（设计“背景与目标”） | 否 | 外部项目，无法扩展 | MINIMAL_NEW_MODULE | 现有工具缺 Swagger 2.0、login 认证、简单定义、agent 约束、Windows 快捷命令（设计 0.2 已批准） | 新仓库，唯一 owner 为 `inhere-tools/apix` |
+| CAP-08 | 分层守卫测试 | xhen 的 `internal/layering_test.go`（`go list` 导入图对照表） | 照搬写法 | 换成 apic 的分层表 | DIRECT_REUSE | none | 无 |
+| CAP-09 | 按 API 定义动态生成命令的通用 API CLI 本体 | Restish、invgate-cli、openapi-to-cli、climate、Speakeasy/Stainless（设计“背景与目标”） | 否 | 外部项目，无法扩展 | MINIMAL_NEW_MODULE | 现有工具缺 Swagger 2.0、login 认证、简单定义、agent 约束、Windows 快捷命令（设计 0.2 已批准） | 新仓库，唯一 owner 为 `inhere-tools/apic` |
 
 ### New module candidates
 
 | candidate_id | capability_id | proposed_module | searched_candidates | direct_reuse_gap | thin_adapter_or_owner_extension_gap | proven_gap | unique_owner_and_lifecycle | deletion_or_merge_handling |
 |---|---|---|---|---|---|---|---|---|
-| NM-01 | CAP-09 | 新仓库与新 CLI `github.com/inhere/apix`（设计 D1） | Restish、invgate-cli、openapi-to-cli、climate（设计“背景与目标”） | Restish 缺 Swagger 2.0、login 认证、简单定义、agent 约束、Windows 快捷命令 | 外部项目，不能由我们扩展 | 设计 0.2 已论证并获批准 | 仓库 `inhere-tools/apix`，由 inhere 维护 | 一期验收失败且决定放弃时，删除整个仓库即可，不影响其他项目 |
+| NM-01 | CAP-09 | 新仓库与新 CLI `github.com/inhere/apic`（设计 D1） | Restish、invgate-cli、openapi-to-cli、climate（设计“背景与目标”） | Restish 缺 Swagger 2.0、login 认证、简单定义、agent 约束、Windows 快捷命令 | 外部项目，不能由我们扩展 | 设计 0.2 已论证并获批准 | 仓库 `inhere-tools/apic`，由 inhere 维护 | 一期验收失败且决定放弃时，删除整个仓库即可，不影响其他项目 |
 
 ### Rejected new tools
 
@@ -107,17 +108,17 @@
 
 ## 前置检查与 fail-closed 条件
 
-运行目录均为 `inhere-tools/apix`。
+运行目录均为 `inhere-tools/apic`。
 
 1. **P1 工作树**：`git status --short` 为空，HEAD 至少包含 `2cc8022`。否则停下，查清归属。
 2. **P2 Go 版本**：容器内 `go version` ≥ 1.25（当前为 1.25.10）；`go.mod` 写 `go 1.25`。
-3. **P3 真实 spec（A1 与 T04 都依赖它）**：使用相邻工作区两份 swaggo 生成的 Swagger 2.0 文件。实施时复制到 `<WP>/tmp/apix-specs/`，不进仓库，具体来源路径记在进度记录里。
+3. **P3 真实 spec（A1 与 T04 都依赖它）**：使用相邻工作区两份 swaggo 生成的 Swagger 2.0 文件。实施时复制到 `<WP>/tmp/apic-specs/`，不进仓库，具体来源路径记在进度记录里。
    - 规模大的一份有 30 个操作，带 apikey 类 securityDefinitions，`basePath` 为 `/`，有 host。
    - 规模小的一份有 9 个操作，没有 host 和 basePath。用它验证“`site add` 没有给 base URL 时报错”，以及加上 `--base-url` 后可以正常使用。
    - 两份文件里所有操作都没有 operationId，用来验证“由方法和路径生成命令名”。
    - 用户另外提供带 `basePath` 前缀的真实 spec 时，A1 一并验证。
 
-4. **P4 解析库锁定（设计 Q4）**：T04 开工前，用一个 20 行左右的探针程序（放 `<WP>/tmp/apix-probe/`），在 P3 的 spec 和 petstore v2 上调用 kin-openapi 的加载与 `openapi2conv.ToV3`。
+4. **P4 解析库锁定（设计 Q4）**：T04 开工前，用一个 20 行左右的探针程序（放 `<WP>/tmp/apic-probe/`），在 P3 的 spec 和 petstore v2 上调用 kin-openapi 的加载与 `openapi2conv.ToV3`。
    - 能得到全部操作、`basePath` 和参数，就锁定 kin-openapi。
    - 失败时改用 libopenapi 再试一次。仍失败就停下，按 Semantic Amendment 报回。
 5. **P5 主机可用**：A4 要用到主机。gofer server 在线，本项目 worker 在线（`gofer job` 能提交）。不在线时 A4 标 UNVERIFIED_REAL_ENV，并停在完成 Gate。
@@ -135,13 +136,13 @@
 
 ## 任务
 
-所有命令都在 `inhere-tools/apix`（Git root）下运行。文中 `<WP>/tmp/` 指工作区根目录的 `tmp/`，不是仓库内的 tmp。
+所有命令都在 `inhere-tools/apic`（Git root）下运行。文中 `<WP>/tmp/` 指工作区根目录的 `tmp/`，不是仓库内的 tmp。
 
 ### T01 仓库骨架、入口、带码错误与分层守卫
 
 - 文件：
-  - `go.mod`：module `github.com/inhere/apix`。
-  - `cmd/apix/main.go`。
+  - `go.mod`：module `github.com/inhere/apic`。
+  - `cmd/apic/main.go`。
   - `internal/commands/{run.go,app.go}`。
   - `internal/model/errors.go`。
   - `internal/layering_test.go`。
@@ -166,7 +167,7 @@
   - **分层表**：照搬 xhen 写法，按“偏离登记”中的边逐条列出，未登记的包或边让测试失败。
 - 验证：`go build ./... && go test ./internal/ -run TestLayering`
 - 完成标准：
-  - `go run ./cmd/apix --version` 打印版本，退出 0。
+  - `go run ./cmd/apic --version` 打印版本，退出 0。
   - 分层测试通过。在 `model` 中临时加入对 `config` 的导入时测试失败（手工验证，不提交）。
 - 依赖：P1、P2。
 
@@ -176,7 +177,7 @@
   - `internal/config/{dir.go,load.go,dotenv.go,expand.go,state.go,check.go}` 及测试。
   - `internal/model/{config.go,secrets.go}` 及测试。
 - 动作：
-  - **配置目录**：`config.Dir()` 先取 `$APIX_CONFIG_DIR`，否则用 `~/.config/apix`。
+  - **配置目录**：`config.Dir()` 先取 `$APIC_CONFIG_DIR`，否则用 `~/.config/apic`。
   - **加载**：`config.Load(dir) (*model.Config, error)` 读 `config.yaml` 和 `sites/*.yaml` 并合并。
     - `version` 缺省按 1 处理，其他值报错。
     - 校验站点名格式 `^[a-z][a-z0-9-]*$`。
@@ -265,7 +266,7 @@
   - **输出**：`output.Format(w, body []byte, contentType, mode)` 支持 `auto/json/raw`。
   - **wiring**：只负责构造依赖（GR108）。
   - **SR2003**：静态命令照常遵守，位置参数先声明再取值，选项绑定到命令结构体。
-- 验证：经真实分发 `commands.Run(info, args)`（GR110）运行 `go test ./internal/commands/ -run 'TestSite|TestOps|TestDesc|TestConfig'`，配置目录用 `t.TempDir()` 并设置 `APIX_CONFIG_DIR`。
+- 验证：经真实分发 `commands.Run(info, args)`（GR110）运行 `go test ./internal/commands/ -run 'TestSite|TestOps|TestDesc|TestConfig'`，配置目录用 `t.TempDir()` 并设置 `APIC_CONFIG_DIR`。
 - 完成标准：
   - 对等价的最小 spec 与 Jenkins 示例走通 add、ls、ops、desc、rm。
   - 删除 config.yaml 中的站点被拒绝，退出 1。
@@ -294,7 +295,7 @@
   - **写保护**：`CheckProtect(method, env, authSpec, yes, tty bool) error`。
     - 方法转大写后再判断。
     - `allow_methods` 不允许、或 protect 环境上写操作缺少 `--yes` 时，返回 `ExitProtected`。
-    - 只有 stdin 与 stderr 都是终端、且没有设置 `APIX_NO_PROMPT` 时才交互确认。
+    - 只有 stdin 与 stderr 都是终端、且没有设置 `APIC_NO_PROMPT` 时才交互确认。
   - **鉴权接口**：由消费方声明，`type Authorizer interface{ Apply(ctx, req *http.Request, dry bool) error; Refresh(ctx) error }`；`model.ErrNoRefresh` 定义在 model。request 不导入 auth。
   - **执行**：一次请求的编排归属 `Execute(ctx, c Call) (*Response, error)`（C2）。`Call` 包含 `Prepared`、`Authorizer`、`Redactor`、`DryRun`、`Yes`、`TTY`、`Timeout`、`Verbose io.Writer`。依次执行：
     1. `CheckProtect`，dry-run 时跳过；
@@ -389,7 +390,7 @@
   - `-i` 输出中 Set-Cookie 被打码。
 - 完成标准：
   - 上述用例全部通过。
-  - `apix pet -X POST /api/users -f name=tom` 对 httptest 服务调用成功。
+  - `apic pet -X POST /api/users -f name=tom` 对 httptest 服务调用成功。
 - 依赖：T05、T07。
 
 ### T09 快捷命令 link
@@ -410,19 +411,19 @@
   - `../` 被拒绝；
   - 覆盖他人文件被拒绝；
   - 文件被改动后 rm 被拒绝；
-  - 透传（仅 Linux）：在测试 PATH 最前面放一个桩脚本 `apix`（把 argv 逐行写入文件），执行生成的 sh 脚本加 `list-users --x "a b"`，断言预带选项与 `"$@"` 都原样透传。
+  - 透传（仅 Linux）：在测试 PATH 最前面放一个桩脚本 `apic`（把 argv 逐行写入文件），执行生成的 sh 脚本加 `list-users --x "a b"`，断言预带选项与 `"$@"` 都原样透传。
 - 完成标准：上述用例全部通过。
 - 依赖：T08。
 
 ### T10 一期验收
 
 - 文件：
-  - `docs/plans/2026-11-10-apix-phase1-plan.md`：只改“进度记录”。
+  - `docs/plans/2026-11-10-apic-phase1-plan.md`：只改“进度记录”。
   - `README.md`：用法、配置示例、`.cmd` 的限制。
-  - `<WP>/tmp/apix-accept/`：验收脚本、配置目录和输出，不进仓库。
+  - `<WP>/tmp/apic-accept/`：验收脚本、配置目录和输出，不进仓库。
 - 动作：
   1. **A1 真实 spec**：
-     - 设 `APIX_CONFIG_DIR=<WP>/tmp/apix-accept/cfg`。
+     - 设 `APIC_CONFIG_DIR=<WP>/tmp/apic-accept/cfg`。
      - 用 P3 的真实 spec 依次运行 `site add`、`ops`、`desc`。
      - 用 `--dry-run` 核对拼出的 URL（含 base_path）。dry-run 不发请求，也不登录。
      - 真实调用只读 GET，需要用户另行同意。
@@ -431,18 +432,18 @@
      - 只有用户提供了 Jenkins 并同意使用其凭证时，才增加一次真实只读调用。
   3. **A3 汇总测试**：`go test ./... -count=1`。
   4. **A4 快捷命令**：
-     - **容器内**：用 `<WP>/tmp/apix-accept/` 下的配置目录和 link 目录，生成 sh 版并调用一次。
+     - **容器内**：用 `<WP>/tmp/apic-accept/` 下的配置目录和 link 目录，生成 sh 版并调用一次。
      - **主机**：
-       - 先在容器里构建：`GOOS=windows GOARCH=amd64 go build -o <WP>/tmp/apix-accept/bin/apix.exe ./cmd/apix`。
-       - 再提交主机 job：`gofer job run -p my-tools-dev -a exec --runner local --sync --cwd tmp/apix-accept -- cmd /c accept-win.cmd`。
-       - `accept-win.cmd` 由本任务写在 `<WP>/tmp/apix-accept/`，它会：
-         - 设置 `APIX_CONFIG_DIR=%CD%\cfg`，把 `%CD%\bin` 放到 PATH 最前；
-         - 运行 `apix link pet --name petx --dir %CD%\links`，用 `links\petx.cmd list-users --dry-run` 调用；
+       - 先在容器里构建：`GOOS=windows GOARCH=amd64 go build -o <WP>/tmp/apic-accept/bin/apic.exe ./cmd/apic`。
+       - 再提交主机 job：`gofer job run -p my-tools-dev -a exec --runner local --sync --cwd tmp/apic-accept -- cmd /c accept-win.cmd`。
+       - `accept-win.cmd` 由本任务写在 `<WP>/tmp/apic-accept/`，它会：
+         - 设置 `APIC_CONFIG_DIR=%CD%\cfg`，把 `%CD%\bin` 放到 PATH 最前；
+         - 运行 `apic link pet --name petx --dir %CD%\links`，用 `links\petx.cmd list-users --dry-run` 调用；
          - 验证覆盖保护和删除保护；
          - 输出各步退出码。
-       - 主机上的所有读写都在 `<WP>/tmp/apix-accept/` 之内。
+       - 主机上的所有读写都在 `<WP>/tmp/apic-accept/` 之内。
   5. **A5 工程检查**：`go vet ./... && go test ./... -count=1 && go test ./internal/ -run TestLayering`，并检查文件行数。
-- 验证：各项的命令和输出摘要写进“进度记录”，完整输出放在 `<WP>/tmp/apix-accept/`。
+- 验证：各项的命令和输出摘要写进“进度记录”，完整输出放在 `<WP>/tmp/apic-accept/`。
 - 完成标准：A1–A5 全部通过，或明确标注 UNVERIFIED 并说明原因（P3、P5 缺失）。
 - 依赖：T01–T09。
 
@@ -464,7 +465,7 @@
 
 - 每个任务各自一个提交。回滚某个任务就 `git revert <该任务提交>`，或者回到上一个任务完成时的提交，再重做本任务。
 - 恢复点：每个任务的提交号写进“进度记录”。
-- 不涉及数据迁移和外部服务状态。测试只用 `t.TempDir()` 作为配置目录，绝不读写真实的 `~/.config/apix`。
+- 不涉及数据迁移和外部服务状态。测试只用 `t.TempDir()` 作为配置目录，绝不读写真实的 `~/.config/apic`。
 - 实施中遇到 Semantic Amendment（例如 gcli 做不到设计约定的行为）时，停在当前任务，回到 plan review，并请求人工批准。
 
 ## 人工 Gate
@@ -519,3 +520,5 @@
 - 2026-11-11 T08（主机合并）完成。用真实 spec 做 dry-run 冒烟通过：`site add`、`ops`、`desc`、两种调用方式、退出码 2 的两个用例。
 - 2026-11-11 用户新增要求：参照其他项目加 Makefile、README、`.github` CI。Makefile 与 CI 已提交（ddea113），README 随 T10 完善。设计 Q3 由用户决定：远端仓库为 `inhere/apix`。建仓和推送仍是外部动作，到时另行确认。
 - 2026-11-11 容器中 `git init` 留下 `core.filemode=true`，导致容器内看到权限位差异；已改为 false，与 Windows 主机一致。
+- 2026-11-11 T09（e70e95d）由 suga 实施后合并。job 在全部提交后因 900 秒无输出被判 stall；gofer 自动续跑（job-20261111-010031-5fccdf5e）的进程占用了已清理的 worktree 目录，已报给 gofer 会话。续跑只做了验证，未改动 main。
+- 2026-11-11 更名：apix → apic（设计 0.4 / 计划 0.4）。仓库目录改为 `inhere-tools/apic`，远端仓库改为 `inhere/apic`。

@@ -30,7 +30,7 @@ func openAPIServer(t *testing.T, failing *bool, hits *int) *httptest.Server {
 
 func TestSiteRefreshStaleCacheExit(t *testing.T) {
 	dir := t.TempDir()
-	t.Setenv("APIX_CONFIG_DIR", dir)
+	t.Setenv("APIC_CONFIG_DIR", dir)
 	failing, hits := false, 0
 	srv := openAPIServer(t, &failing, &hits)
 	cfg := fmt.Sprintf("version: 1\nsites:\n  demo:\n    source: {type: openapi, url: %q, ttl: 1ns}\n    default_env: e\n    envs: {e: {base_url: 'http://x.test'}}\n", srv.URL)
@@ -52,18 +52,18 @@ func TestSiteRefreshStaleCacheExit(t *testing.T) {
 
 func TestSiteCacheReadIgnoresAuthAndTLS(t *testing.T) {
 	dir := t.TempDir()
-	t.Setenv("APIX_CONFIG_DIR", dir)
-	t.Setenv("APIX_SPEC_TOKEN", "spec-secret-token")
+	t.Setenv("APIC_CONFIG_DIR", dir)
+	t.Setenv("APIC_SPEC_TOKEN", "spec-secret-token")
 	failing, hits := false, 0
 	srv := openAPIServer(t, &failing, &hits)
-	cfg := fmt.Sprintf("version: 1\nsites:\n  demo:\n    source: {type: openapi, url: %q, auth: spec}\n    default_env: e\n    envs: {e: {base_url: 'http://x.test'}}\n    auths:\n      spec: {type: bearer, token: '${env:APIX_SPEC_TOKEN}'}\n", srv.URL)
+	cfg := fmt.Sprintf("version: 1\nsites:\n  demo:\n    source: {type: openapi, url: %q, auth: spec}\n    default_env: e\n    envs: {e: {base_url: 'http://x.test'}}\n    auths:\n      spec: {type: bearer, token: '${env:APIC_SPEC_TOKEN}'}\n", srv.URL)
 	assert.NoError(t, os.WriteFile(filepath.Join(dir, "config.yaml"), []byte(cfg), 0600))
 	code, _, errOut := runIO(t, "site", "refresh", "demo")
 	assert.Eq(t, 0, code, errOut)
 	n := hits
 	// the auth variable disappears and the CA file is missing: the valid cache still serves.
-	assert.NoError(t, os.Unsetenv("APIX_SPEC_TOKEN"))
-	cfg = fmt.Sprintf("version: 1\nsites:\n  demo:\n    source: {type: openapi, url: %q, auth: spec}\n    default_env: e\n    envs: {e: {base_url: 'http://x.test', ca_file: /no/such/ca.pem}}\n    auths:\n      spec: {type: bearer, token: '${env:APIX_SPEC_TOKEN}'}\n", srv.URL)
+	assert.NoError(t, os.Unsetenv("APIC_SPEC_TOKEN"))
+	cfg = fmt.Sprintf("version: 1\nsites:\n  demo:\n    source: {type: openapi, url: %q, auth: spec}\n    default_env: e\n    envs: {e: {base_url: 'http://x.test', ca_file: /no/such/ca.pem}}\n    auths:\n      spec: {type: bearer, token: '${env:APIC_SPEC_TOKEN}'}\n", srv.URL)
 	assert.NoError(t, os.WriteFile(filepath.Join(dir, "config.yaml"), []byte(cfg), 0600))
 	code, out, errOut := runIO(t, "ops", "demo")
 	assert.Eq(t, 0, code, errOut)

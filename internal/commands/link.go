@@ -9,10 +9,10 @@ import (
 	"strings"
 
 	"github.com/gookit/gcli/v3"
-	"github.com/inhere/apix/internal/config"
-	"github.com/inhere/apix/internal/link"
-	"github.com/inhere/apix/internal/model"
-	"github.com/inhere/apix/internal/wiring"
+	"github.com/inhere/apic/internal/config"
+	"github.com/inhere/apic/internal/link"
+	"github.com/inhere/apic/internal/model"
+	"github.com/inhere/apic/internal/wiring"
 )
 
 type linkOptions struct{ name, env, auth, dir string }

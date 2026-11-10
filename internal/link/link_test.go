@@ -10,8 +10,8 @@ import (
 	"testing"
 
 	"github.com/gookit/goutil/x/assert"
-	"github.com/inhere/apix/internal/link"
-	"github.com/inhere/apix/internal/model"
+	"github.com/inhere/apic/internal/link"
+	"github.com/inhere/apic/internal/model"
 )
 
 func TestLinkNames(t *testing.T) {
@@ -30,8 +30,8 @@ func TestLinkNames(t *testing.T) {
 
 func TestLinkScripts(t *testing.T) {
 	win := link.Scripts("windows", "pet", "prod", "ro")
-	assert.Eq(t, "#!/bin/sh\nexec apix --api pet --env prod --auth ro \"$@\"\n", win[""])
-	assert.Eq(t, "@apix --api pet --env prod --auth ro %*\r\n", win[".cmd"])
+	assert.Eq(t, "#!/bin/sh\nexec apic --api pet --env prod --auth ro \"$@\"\n", win[""])
+	assert.Eq(t, "@apic --api pet --env prod --auth ro %*\r\n", win[".cmd"])
 	assert.Len(t, win, 2)
 	assert.Len(t, link.Scripts("linux", "pet", "", ""), 1)
 }
@@ -92,7 +92,7 @@ func TestLinkPassThrough(t *testing.T) {
 	dir := t.TempDir()
 	output := filepath.Join(dir, "args")
 	stub := "#!/bin/sh\nprintf '%s\\n' \"$@\" > \"$LINK_ARGS\"\n"
-	assert.Require(t, assert.NoError(t, os.WriteFile(filepath.Join(dir, "apix"), []byte(stub), 0755)))
+	assert.Require(t, assert.NoError(t, os.WriteFile(filepath.Join(dir, "apic"), []byte(stub), 0755)))
 	records := link.Records{}
 	paths, err := link.Create(dir, "petctl", "pet", "prod", "", &records)
 	assert.Require(t, assert.NoError(t, err))

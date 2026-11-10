@@ -10,7 +10,7 @@ import (
 	"sort"
 	"time"
 
-	"github.com/inhere/apix/internal/model"
+	"github.com/inhere/apic/internal/model"
 )
 
 // Authorizer is implemented by the auth module; declared here so request does not import it.

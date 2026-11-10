@@ -14,7 +14,7 @@ import (
 	"time"
 
 	"github.com/gookit/goutil/x/assert"
-	"github.com/inhere/apix/internal/model"
+	"github.com/inhere/apic/internal/model"
 )
 
 func code(err error) int {
@@ -249,7 +249,7 @@ func TestCurlNoPlaintext(t *testing.T) {
 }
 
 func TestProtectLowercaseMethod(t *testing.T) {
-	t.Setenv("APIX_NO_PROMPT", "")
+	t.Setenv("APIC_NO_PROMPT", "")
 	env := model.Env{Protect: true}
 	assert.Eq(t, model.ExitProtected, code(CheckProtect("post", env, model.AuthSpec{}, false, false, nil)))
 	assert.NoErr(t, CheckProtect("post", env, model.AuthSpec{}, true, false, nil))
@@ -258,7 +258,7 @@ func TestProtectLowercaseMethod(t *testing.T) {
 	yes := func(string) bool { return true }
 	assert.NoErr(t, CheckProtect("post", env, model.AuthSpec{}, false, true, yes))
 	assert.Eq(t, model.ExitProtected, code(CheckProtect("post", env, model.AuthSpec{}, false, true, nil)))
-	t.Setenv("APIX_NO_PROMPT", "1")
+	t.Setenv("APIC_NO_PROMPT", "1")
 	assert.Eq(t, model.ExitProtected, code(CheckProtect("post", env, model.AuthSpec{}, false, true, yes)))
 }
 

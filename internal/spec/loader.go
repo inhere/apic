@@ -4,7 +4,7 @@ package spec
 import (
 	"context"
 
-	"github.com/inhere/apix/internal/model"
+	"github.com/inhere/apic/internal/model"
 )
 
 // Loader loads a definition; dir resolves relative source file paths.

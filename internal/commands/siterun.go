@@ -9,10 +9,10 @@ import (
 	"os"
 	"strings"
 
-	"github.com/inhere/apix/internal/model"
-	"github.com/inhere/apix/internal/output"
-	"github.com/inhere/apix/internal/request"
-	"github.com/inhere/apix/internal/wiring"
+	"github.com/inhere/apic/internal/model"
+	"github.com/inhere/apic/internal/output"
+	"github.com/inhere/apic/internal/request"
+	"github.com/inhere/apic/internal/wiring"
 	"golang.org/x/term"
 )
 

@@ -15,7 +15,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/inhere/apix/internal/model"
+	"github.com/inhere/apic/internal/model"
 )
 
 func deps(t *testing.T, dir string) Deps {

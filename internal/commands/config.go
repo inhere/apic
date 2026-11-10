@@ -5,8 +5,8 @@ import (
 	"os"
 
 	"github.com/gookit/gcli/v3"
-	"github.com/inhere/apix/internal/config"
-	"github.com/inhere/apix/internal/wiring"
+	"github.com/inhere/apic/internal/config"
+	"github.com/inhere/apic/internal/wiring"
 )
 
 func configCommand() *gcli.Command {

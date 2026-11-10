@@ -10,9 +10,9 @@ func Scripts(goos, site, env, auth string) map[string]string {
 	if auth != "" {
 		args += " --auth " + auth
 	}
-	out := map[string]string{"": "#!/bin/sh\nexec apix" + args + " \"$@\"\n"}
+	out := map[string]string{"": "#!/bin/sh\nexec apic" + args + " \"$@\"\n"}
 	if goos == "windows" {
-		out[".cmd"] = "@apix" + args + " %*\r\n"
+		out[".cmd"] = "@apic" + args + " %*\r\n"
 	}
 	return out
 }

@@ -15,12 +15,12 @@ import (
 	"time"
 
 	"github.com/gookit/goutil/x/assert"
-	"github.com/inhere/apix/internal/model"
-	"github.com/inhere/apix/internal/spec"
+	"github.com/inhere/apic/internal/model"
+	"github.com/inhere/apic/internal/spec"
 )
 
 func TestOpenAPIEquivalent(t *testing.T) {
-	t.Setenv("APIX_CONFIG_DIR", t.TempDir())
+	t.Setenv("APIC_CONFIG_DIR", t.TempDir())
 	var indexes []*model.Index
 	for _, file := range []string{"min-v2.json", "min-v3.json"} {
 		t.Run(file, func(t *testing.T) {
@@ -51,7 +51,7 @@ func TestOpenAPIEquivalent(t *testing.T) {
 }
 
 func TestOpenAPIYAML(t *testing.T) {
-	t.Setenv("APIX_CONFIG_DIR", t.TempDir())
+	t.Setenv("APIC_CONFIG_DIR", t.TempDir())
 	for _, tc := range []struct {
 		name string
 		doc  string
@@ -75,7 +75,7 @@ func TestOpenAPIYAML(t *testing.T) {
 }
 
 func TestOpenAPIBodyMedia(t *testing.T) {
-	t.Setenv("APIX_CONFIG_DIR", t.TempDir())
+	t.Setenv("APIC_CONFIG_DIR", t.TempDir())
 	for _, tc := range []struct{ media, want string }{
 		{"application/json", "json"},
 		{"application/x-www-form-urlencoded", "form"},
@@ -99,7 +99,7 @@ func TestOpenAPIBodyMedia(t *testing.T) {
 }
 
 func TestOpenAPIURLScheme(t *testing.T) {
-	t.Setenv("APIX_CONFIG_DIR", t.TempDir())
+	t.Setenv("APIC_CONFIG_DIR", t.TempDir())
 	raw, err := os.ReadFile(filepath.Join("testdata", "min-v2.json"))
 	assert.Require(t, assert.NoError(t, err))
 	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { _, _ = w.Write(raw) }))
@@ -111,7 +111,7 @@ func TestOpenAPIURLScheme(t *testing.T) {
 }
 
 func TestFetchETag(t *testing.T) {
-	t.Setenv("APIX_CONFIG_DIR", t.TempDir())
+	t.Setenv("APIC_CONFIG_DIR", t.TempDir())
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Eq(t, "Bearer demo", r.Header.Get("Authorization"))
 		if r.Header.Get("If-None-Match") == `"v1"` {
@@ -140,7 +140,7 @@ func TestFetchETag(t *testing.T) {
 }
 
 func TestFetchErrors(t *testing.T) {
-	t.Setenv("APIX_CONFIG_DIR", t.TempDir())
+	t.Setenv("APIC_CONFIG_DIR", t.TempDir())
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusInternalServerError) }))
 	defer server.Close()
 	_, _, _, err := spec.Fetch(context.Background(), model.Source{URL: server.URL + "/spec?secret=demo"}, t.TempDir(), spec.FetchOptions{})
@@ -159,7 +159,7 @@ func (roundTripFail) RoundTrip(r *http.Request) (*http.Response, error) {
 }
 
 func TestFetchRedirectAndApplyError(t *testing.T) {
-	t.Setenv("APIX_CONFIG_DIR", t.TempDir())
+	t.Setenv("APIC_CONFIG_DIR", t.TempDir())
 	var reached atomic.Bool
 	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		reached.Store(true)
@@ -185,7 +185,7 @@ func TestFetchRedirectAndApplyError(t *testing.T) {
 
 func TestCacheRefresh(t *testing.T) {
 	dir := t.TempDir()
-	t.Setenv("APIX_CONFIG_DIR", dir)
+	t.Setenv("APIC_CONFIG_DIR", dir)
 	raw, err := os.ReadFile(filepath.Join("testdata", "min-v3.json"))
 	assert.Require(t, assert.NoError(t, err))
 	var failing atomic.Bool
@@ -230,12 +230,12 @@ func TestCacheRefresh(t *testing.T) {
 	assert.Require(t, assert.NoError(t, spec.Remove(dir, "demo")))
 	_, _, err = spec.Index(context.Background(), "demo", src, dir, spec.IndexOptions{})
 	assertCode(t, err, model.ExitLocal)
-	assert.True(t, strings.Contains(err.Error(), "run apix site refresh demo"))
+	assert.True(t, strings.Contains(err.Error(), "run apic site refresh demo"))
 }
 
 func TestCacheSimpleNoCache(t *testing.T) {
 	dir := t.TempDir()
-	t.Setenv("APIX_CONFIG_DIR", dir)
+	t.Setenv("APIC_CONFIG_DIR", dir)
 	file := filepath.Join(dir, "demo.yaml")
 	assert.Require(t, assert.NoError(t, os.WriteFile(file, []byte("operations:\n  one: {get: /one}\n"), 0600)))
 	idx, _, err := spec.Index(context.Background(), "demo", model.Source{Type: "simple", File: file}, dir, spec.IndexOptions{})
@@ -250,11 +250,11 @@ func TestCacheSimpleNoCache(t *testing.T) {
 }
 
 func TestRealSpec(t *testing.T) {
-	dir := os.Getenv("APIX_REAL_SPEC_DIR")
+	dir := os.Getenv("APIC_REAL_SPEC_DIR")
 	if dir == "" {
-		t.Skip("APIX_REAL_SPEC_DIR is not set")
+		t.Skip("APIC_REAL_SPEC_DIR is not set")
 	}
-	t.Setenv("APIX_CONFIG_DIR", t.TempDir())
+	t.Setenv("APIC_CONFIG_DIR", t.TempDir())
 	for _, tc := range []struct {
 		file  string
 		count int

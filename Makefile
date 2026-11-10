@@ -1,7 +1,7 @@
-## apix — Makefile
+## apic — Makefile
 
-APP      := apix
-MAIN_DIR := ./cmd/apix
+APP      := apic
+MAIN_DIR := ./cmd/apic
 GOEXE    = $(shell go env GOEXE)
 GOPATH   = $(shell go env GOPATH)
 BINARY   := $(APP)$(GOEXE)
@@ -114,6 +114,6 @@ clean-dist: clean
 
 ## help: show this help
 help:
-	@echo "apix Build System"
+	@echo "apic Build System"
 	@echo ""
 	@grep -E '^## ' $(MAKEFILE_LIST) | sed 's/## /  /'

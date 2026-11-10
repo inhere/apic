@@ -8,8 +8,8 @@ import (
 	"text/tabwriter"
 
 	"github.com/gookit/gcli/v3"
-	"github.com/inhere/apix/internal/model"
-	"github.com/inhere/apix/internal/wiring"
+	"github.com/inhere/apic/internal/model"
+	"github.com/inhere/apic/internal/wiring"
 )
 
 type opsOptions struct{ tag, match, output string }

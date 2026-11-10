@@ -10,14 +10,14 @@ import (
 	"time"
 
 	"github.com/gookit/goutil/x/assert"
-	"github.com/inhere/apix/internal/config"
-	"github.com/inhere/apix/internal/model"
+	"github.com/inhere/apic/internal/config"
+	"github.com/inhere/apic/internal/model"
 )
 
 func testDir(t *testing.T) string {
 	t.Helper()
 	dir := t.TempDir()
-	t.Setenv("APIX_CONFIG_DIR", dir)
+	t.Setenv("APIC_CONFIG_DIR", dir)
 	return dir
 }
 
@@ -114,8 +114,8 @@ func TestLoadMissingConfig(t *testing.T) {
 
 func TestDotenvAndLookup(t *testing.T) {
 	dir := testDir(t)
-	_, wasExported := os.LookupEnv("APIX_T02_NOT_EXPORTED")
-	putFile(t, filepath.Join(dir, ".env"), "# comment\nexport PET_USER='single quoted'\nPET_PASS=\"double quoted\" # comment\nMixed=lower # trailing\nMIXED=upper\nINLINE=part#value\nEMPTY= # comment\nAPIX_T02_NOT_EXPORTED=only-in-file\n")
+	_, wasExported := os.LookupEnv("APIC_T02_NOT_EXPORTED")
+	putFile(t, filepath.Join(dir, ".env"), "# comment\nexport PET_USER='single quoted'\nPET_PASS=\"double quoted\" # comment\nMixed=lower # trailing\nMIXED=upper\nINLINE=part#value\nEMPTY= # comment\nAPIC_T02_NOT_EXPORTED=only-in-file\n")
 	env, err := config.LoadEnv(dir)
 	assert.Require(t, assert.NoErr(t, err))
 	for _, tc := range []struct{ key, want string }{
@@ -135,7 +135,7 @@ func TestDotenvAndLookup(t *testing.T) {
 	assert.True(t, ok)
 	assert.Eq(t, "os override", value)
 	// The parser must not export a key that was absent before loading.
-	_, exported := os.LookupEnv("APIX_T02_NOT_EXPORTED")
+	_, exported := os.LookupEnv("APIC_T02_NOT_EXPORTED")
 	assert.Eq(t, wasExported, exported)
 }
 
@@ -143,10 +143,10 @@ func TestLoadEnvOnlyFromDirectory(t *testing.T) {
 	dir := testDir(t)
 	cwd := t.TempDir()
 	t.Chdir(cwd)
-	putFile(t, filepath.Join(cwd, ".env"), "APIX_T02_CWD_ONLY=wrong\n")
+	putFile(t, filepath.Join(cwd, ".env"), "APIC_T02_CWD_ONLY=wrong\n")
 	env, err := config.LoadEnv(dir)
 	assert.Require(t, assert.NoErr(t, err))
-	_, ok := env.Lookup("APIX_T02_CWD_ONLY")
+	_, ok := env.Lookup("APIC_T02_CWD_ONLY")
 	assert.False(t, ok)
 	_, err = config.LoadEnv("")
 	localError(t, err, "config directory")

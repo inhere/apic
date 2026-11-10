@@ -6,7 +6,7 @@ import (
 	"net/http"
 	"os"
 
-	"github.com/inhere/apix/internal/model"
+	"github.com/inhere/apic/internal/model"
 )
 
 // NewClient builds an http.Client that never follows redirects and honors env TLS settings.

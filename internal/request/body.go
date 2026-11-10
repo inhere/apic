@@ -5,7 +5,7 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/inhere/apix/internal/model"
+	"github.com/inhere/apic/internal/model"
 )
 
 // buildBody returns the buffered body and its automatic Content-Type.

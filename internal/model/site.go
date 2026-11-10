@@ -4,7 +4,7 @@ import "time"
 
 // Source describes where a site's API definition comes from.
 type Source struct {
-	// Type is "openapi" (OpenAPI 3.x / Swagger 2.0) or "simple" (apix YAML definition).
+	// Type is "openapi" (OpenAPI 3.x / Swagger 2.0) or "simple" (apic YAML definition).
 	Type string `yaml:"type"`
 	// URL of an OpenAPI document; empty when File is used.
 	URL string `yaml:"url,omitempty"`

@@ -13,7 +13,7 @@ import (
 	"testing"
 
 	"github.com/gookit/goutil/x/assert"
-	"github.com/inhere/apix/internal/commands"
+	"github.com/inhere/apic/internal/commands"
 )
 
 func runCommand(t *testing.T, args ...string) (int, string) {
@@ -40,7 +40,7 @@ func fixture(t *testing.T, name string) string {
 
 func TestSiteLifecycle(t *testing.T) {
 	dir := t.TempDir()
-	t.Setenv("APIX_CONFIG_DIR", dir)
+	t.Setenv("APIC_CONFIG_DIR", dir)
 	path := fixture(t, "min-v2.json")
 	code, out := runCommand(t, "site", "add", "demo", "--spec", path)
 	assert.Eq(t, 0, code)
@@ -102,7 +102,7 @@ func TestSiteLifecycle(t *testing.T) {
 
 func TestSiteSimpleAndMissingBase(t *testing.T) {
 	dir := t.TempDir()
-	t.Setenv("APIX_CONFIG_DIR", dir)
+	t.Setenv("APIC_CONFIG_DIR", dir)
 	path := fixture(t, "jenkins.yaml")
 	code, _ := runCommand(t, "site", "add", "demo", "--def", path)
 	assert.Eq(t, 1, code)
@@ -134,19 +134,19 @@ func TestSiteSimpleAndMissingBase(t *testing.T) {
 
 func TestConfigShowCheckAndUserSite(t *testing.T) {
 	dir := t.TempDir()
-	t.Setenv("APIX_CONFIG_DIR", dir)
-	t.Setenv("APIX_TEST_SECRET", "")
+	t.Setenv("APIC_CONFIG_DIR", dir)
+	t.Setenv("APIC_TEST_SECRET", "")
 	// Unset rather than set empty, so the .env value takes effect.
-	assert.NoError(t, os.Unsetenv("APIX_TEST_SECRET"))
-	config := "version: 1\nsites:\n  demo:\n    source: {type: openapi, url: 'https://example.test/api'}\n    envs:\n      default: {base_url: 'http://placeholder-secret-value'}\n    auths:\n      default: {type: bearer, token: '${env:APIX_TEST_SECRET}'}\n"
+	assert.NoError(t, os.Unsetenv("APIC_TEST_SECRET"))
+	config := "version: 1\nsites:\n  demo:\n    source: {type: openapi, url: 'https://example.test/api'}\n    envs:\n      default: {base_url: 'http://placeholder-secret-value'}\n    auths:\n      default: {type: bearer, token: '${env:APIC_TEST_SECRET}'}\n"
 	assert.NoError(t, os.WriteFile(filepath.Join(dir, "config.yaml"), []byte(config), 0600))
-	assert.NoError(t, os.WriteFile(filepath.Join(dir, ".env"), []byte("APIX_TEST_SECRET=placeholder-secret-value\n"), 0600))
+	assert.NoError(t, os.WriteFile(filepath.Join(dir, ".env"), []byte("APIC_TEST_SECRET=placeholder-secret-value\n"), 0600))
 	for _, args := range [][]string{{"site", "show", "demo"}, {"config", "show"}} {
 		t.Run(strings.Join(args, "-"), func(t *testing.T) {
 			code, out := runCommand(t, args...)
 			assert.Eq(t, 0, code)
 			assert.False(t, strings.Contains(out, "placeholder-secret-value"))
-			assert.Contains(t, out, "${env:APIX_TEST_SECRET}")
+			assert.Contains(t, out, "${env:APIC_TEST_SECRET}")
 		})
 	}
 	code, _ := runCommand(t, "site", "rm", "demo")
@@ -161,7 +161,7 @@ func TestConfigShowCheckAndUserSite(t *testing.T) {
 
 func TestSiteFailureRecovery(t *testing.T) {
 	dir := t.TempDir()
-	t.Setenv("APIX_CONFIG_DIR", dir)
+	t.Setenv("APIC_CONFIG_DIR", dir)
 	cacheDir := filepath.Join(dir, "cache", "specs")
 	assert.NoError(t, os.MkdirAll(cacheDir, 0700))
 	assert.NoError(t, os.WriteFile(filepath.Join(cacheDir, "demo.raw"), []byte("stale"), 0600))
@@ -181,7 +181,7 @@ func TestSiteFailureRecovery(t *testing.T) {
 
 func TestConfigPlainCredentials(t *testing.T) {
 	dir := t.TempDir()
-	t.Setenv("APIX_CONFIG_DIR", dir)
+	t.Setenv("APIC_CONFIG_DIR", dir)
 	cfg := "version: 1\nsites:\n  demo:\n    source: {type: openapi, url: 'https://example.test/sample-password/ab'}\n    auths:\n      demo: {type: basic, username: sample-user, password: sample-password, token: ab, value: sample-value, login: {body: {pin: 123, secret: sample-body}}}\n"
 	assert.NoError(t, os.WriteFile(filepath.Join(dir, "config.yaml"), []byte(cfg), 0600))
 	for _, args := range [][]string{{"site", "show", "demo"}, {"config", "show"}} {
@@ -201,23 +201,23 @@ func TestConfigPlainCredentials(t *testing.T) {
 
 func TestConfigShortReferencedSecret(t *testing.T) {
 	dir := t.TempDir()
-	t.Setenv("APIX_CONFIG_DIR", dir)
-	t.Setenv("APIX_SHORT_SECRET", "xy")
-	cfg := "version: 1\nsites:\n  demo:\n    source: {type: openapi, url: 'https://example.test/xy'}\n    auths:\n      demo: {type: bearer, token: '${env:APIX_SHORT_SECRET}'}\n"
+	t.Setenv("APIC_CONFIG_DIR", dir)
+	t.Setenv("APIC_SHORT_SECRET", "xy")
+	cfg := "version: 1\nsites:\n  demo:\n    source: {type: openapi, url: 'https://example.test/xy'}\n    auths:\n      demo: {type: bearer, token: '${env:APIC_SHORT_SECRET}'}\n"
 	assert.NoError(t, os.WriteFile(filepath.Join(dir, "config.yaml"), []byte(cfg), 0600))
 	for _, args := range [][]string{{"site", "show", "demo"}, {"config", "show"}} {
 		t.Run(strings.Join(args, "-"), func(t *testing.T) {
 			code, out := runCommand(t, args...)
 			assert.Eq(t, 0, code)
 			assert.False(t, strings.Contains(out, "/xy"))
-			assert.Contains(t, out, "${env:APIX_SHORT_SECRET}")
+			assert.Contains(t, out, "${env:APIC_SHORT_SECRET}")
 		})
 	}
 }
 
 func TestSiteRefreshInsecureWarning(t *testing.T) {
 	dir := t.TempDir()
-	t.Setenv("APIX_CONFIG_DIR", dir)
+	t.Setenv("APIC_CONFIG_DIR", dir)
 	data, err := os.ReadFile(fixture(t, "min-v2.json"))
 	assert.Require(t, assert.NoError(t, err))
 	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -251,7 +251,7 @@ func TestSiteRefreshStaticAuth(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			dir := t.TempDir()
-			t.Setenv("APIX_CONFIG_DIR", dir)
+			t.Setenv("APIC_CONFIG_DIR", dir)
 			data, err := os.ReadFile(fixture(t, "min-v2.json"))
 			assert.Require(t, assert.NoError(t, err))
 			calls := 0
@@ -277,7 +277,7 @@ func TestSiteRefreshStaticAuth(t *testing.T) {
 
 func TestSiteRefreshAuth(t *testing.T) {
 	dir := t.TempDir()
-	t.Setenv("APIX_CONFIG_DIR", dir)
+	t.Setenv("APIC_CONFIG_DIR", dir)
 	data, err := os.ReadFile(fixture(t, "min-v2.json"))
 	assert.Require(t, assert.NoError(t, err))
 	requests := 0
@@ -292,9 +292,9 @@ func TestSiteRefreshAuth(t *testing.T) {
 		}
 	}))
 	defer server.Close()
-	config := fmt.Sprintf("version: 1\nsites:\n  demo:\n    source: {type: openapi, url: %q, auth: example}\n    auths:\n      example: {type: bearer, token: '${env:APIX_SAMPLE_TOKEN}'}\n", server.URL)
+	config := fmt.Sprintf("version: 1\nsites:\n  demo:\n    source: {type: openapi, url: %q, auth: example}\n    auths:\n      example: {type: bearer, token: '${env:APIC_SAMPLE_TOKEN}'}\n", server.URL)
 	assert.NoError(t, os.WriteFile(filepath.Join(dir, "config.yaml"), []byte(config), 0600))
-	t.Setenv("APIX_SAMPLE_TOKEN", "sample-secret")
+	t.Setenv("APIC_SAMPLE_TOKEN", "sample-secret")
 	code, _ := runCommand(t, "site", "refresh", "demo")
 	assert.Eq(t, 0, code)
 	assert.Eq(t, 1, requests)

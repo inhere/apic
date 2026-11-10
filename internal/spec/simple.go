@@ -9,7 +9,7 @@ import (
 	"strings"
 
 	"github.com/goccy/go-yaml"
-	"github.com/inhere/apix/internal/model"
+	"github.com/inhere/apic/internal/model"
 )
 
 var simpleName = regexp.MustCompile(`^[a-z0-9]+(?:-[a-z0-9]+)*$`)

@@ -3,7 +3,7 @@ package main
 import (
 	"os"
 
-	"github.com/inhere/apix/internal/commands"
+	"github.com/inhere/apic/internal/commands"
 )
 
 var (
