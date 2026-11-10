@@ -1,13 +1,14 @@
 <!-- template_id: plan; template_version: 1.3.0 -->
 # apix 一期（MVP）实施计划
 
-> 状态：Draft 0.2 / 已批准（用户 2026-11-10：“批准 apix 一期计划 0.2（接受未复核修订）；开始实施；建好gofer plan 跟进，简单的任务可以通过gofer 可以交给 suga gpt 模型做”）
+> 状态：Draft 0.3 / 已批准（0.3 只随设计 0.3 改了 T03 的命名规则，用户 2026-11-10：“命名按新规则，继续”）；0.2 已批准（用户 2026-11-10：“批准 apix 一期计划 0.2（接受未复核修订）；开始实施；建好gofer plan 跟进，简单的任务可以通过gofer 可以交给 suga gpt 模型做”）
 
 ## 修订记录
 
 | 版本 | 日期 | 作者 | 摘要 |
 |---|---|---|---|
 | 0.1 | 2026-11-10 | Claude（inhere：“批准 apix 设计 0.2（接受未复核修订），Q1/Q2 按推荐，开始写一期计划”） | 初稿：4 个波次、10 个任务，覆盖设计 0.2“分期路线·一期”的 8 项 |
+| 0.3 | 2026-11-10 | Claude | T03 的命名规则按设计 0.3 D16 修改，验证用例相应更新 |
 | 0.2 | 2026-11-10 | Claude | 处理合并轴评审（B1–B2 阻塞，C1–C11 纠正，S1–S4 建议）：统一入口 `commands.Run(info, args)`；A4 主机步骤固定为只写 `<WP>/tmp`；领域包只依赖 model（打码器、密钥登记表放进 model，request 自己声明 Authorizer 接口）；编排归属 `request.Execute`；`-H` 不重复注册；`--api` 后跟未配置站点时退出 2；dry-run 不触发登录；base_path 来源与覆盖；补齐验证项；TLS 并入一期；新增“偏离登记” |
 
 > 仅语义变化递增版本；纯 identity/provenance/元数据纠正沿用原版本，并在 Git/进度记录中留痕。
@@ -69,7 +70,7 @@
 
 ## 输入与批准证据
 
-- 设计：`docs/design/apix-design.md` Draft 0.2，已批准。
+- 设计：`docs/design/apix-design.md` Draft 0.3，已批准（0.3 只改了命名规则 D16）。
   - 批准原话（2026-11-10）：“批准 apix 设计 0.2（接受未复核修订），Q1/Q2 按推荐，开始写一期计划”。
   - 记录批准的提交：`2cc8022`。
 - 设计第 1 轮评审发现 A1–A2、B1–B9、S1–S5，已全部并入 0.2。本计划按 0.2 的条款执行，不重述理由。
@@ -217,11 +218,11 @@
     - `Index{Ops []Operation, DefaultBasePath, DefaultBaseURL string}`。
   - **加载接口**：与设计一致，`Load` 返回 `*model.Index`。
   - **简单定义**：`SimpleLoader` 支持简写（`get: /x`）与完整写法（`params`、`body`、`query: [..]`、`output`）；路径中的 `{x}` 自动成为必填 path 参数。
-  - **命名**：`naming.go` 把 operationId 转为 kebab-case；没有 operationId 时由方法加路径生成；重名时追加 `-2`、`-3`，并返回告警。
+  - **命名**：`naming.go` 按设计 0.3 的 D16 实现（operationId 转为 kebab-case；没有 operationId 时由路径静态段生成，不带方法、去掉公共前缀、路径参数不进入命令名；重名时依次用方法前缀 → `-by-<参数>` → 序号消歧），并返回消歧告警。
 - 验证：`go test ./internal/spec/ -run 'TestSimple|TestNaming'`，用设计 0.2 的 `defs/jenkins.yaml` 示例作为 testdata。
 - 完成标准：
   - Jenkins 示例解析出 4 个操作，参数、必填与 body 类型正确。
-  - 命名在三种情况下都符合预期：`listUsers`、没有 operationId、重名。
+  - 命名用例覆盖：`listUsers`；`POST /back/cfg/get` → `back-cfg-get`；`/api/v1` 公共前缀被去掉；只有一个操作时不去前缀；`/` → `root`；`GET` 与 `DELETE /users` → `get-users`、`delete-users`；`GET /users` 与 `GET /users/{id}` → `users`、`users-by-id`；需要序号消歧的情况。
 - 依赖：T01。
 
 ### T04 OpenAPI 加载、base_path 与操作索引缓存
