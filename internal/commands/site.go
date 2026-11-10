@@ -67,6 +67,15 @@ func siteLookup(d *wiring.Deps, name string) (*model.Site, error) {
 }
 
 func loadIndex(d *wiring.Deps, name string, site *model.Site, refresh bool) (*model.Index, []string, error) {
+	envName := site.DefaultEnv
+	if selected := d.State.Selections[name].Env; selected != "" {
+		envName = selected
+	}
+	if site.Source.URL != "" && site.Envs[envName].Insecure {
+		if err := printWarnings(d, []string{"TLS certificate verification disabled for spec fetch"}); err != nil {
+			return nil, nil, err
+		}
+	}
 	fetch, err := wiring.FetchOptions(d, name, site)
 	if err != nil {
 		return nil, nil, err
@@ -128,7 +137,11 @@ func addSite(name string, opt *siteAddOptions) (result error) {
 	}
 	defer func() {
 		if err := os.RemoveAll(tmp); err != nil {
-			fmt.Fprintln(os.Stderr, "warning: remove temporary index:", err)
+			if result != nil {
+				result = model.Errorf(model.ExitLocal, "%v; remove temporary index: %v", result, err)
+			} else {
+				result = model.Errorf(model.ExitLocal, "remove temporary index: %v", err)
+			}
 		}
 	}()
 	tempDeps := *d
@@ -299,12 +312,15 @@ func writeJSON(value any) error {
 	return writeString(os.Stdout, "\n")
 }
 
-func maskCredential(value string, secrets *model.Secrets) string {
+func maskCredential(value string, secrets *model.Secrets, short *[]string) string {
 	if value == "" {
 		return value
 	}
 	if !strings.Contains(value, "${env:") {
 		secrets.Add(value)
+		if len(value) < 4 {
+			*short = append(*short, value)
+		}
 	}
 	ref := regexp.MustCompile(`\$\{env:[^}]+\}`)
 	matches := ref.FindAllStringIndex(value, -1)
@@ -326,20 +342,20 @@ func maskCredential(value string, secrets *model.Secrets) string {
 	return masked.String()
 }
 
-func maskBody(value any, secrets *model.Secrets) any {
+func maskBody(value any, secrets *model.Secrets, short *[]string) any {
 	switch v := value.(type) {
 	case string:
-		return maskCredential(v, secrets)
+		return maskCredential(v, secrets, short)
 	case map[string]any:
 		copy := make(map[string]any, len(v))
 		for key, child := range v {
-			copy[key] = maskBody(child, secrets)
+			copy[key] = maskBody(child, secrets, short)
 		}
 		return copy
 	case []any:
 		copy := make([]any, len(v))
 		for i, child := range v {
-			copy[i] = maskBody(child, secrets)
+			copy[i] = maskBody(child, secrets, short)
 		}
 		return copy
 	default:
@@ -350,31 +366,66 @@ func maskBody(value any, secrets *model.Secrets) any {
 	}
 }
 
-func maskedSite(site *model.Site, secrets *model.Secrets) *model.Site {
+func maskedSite(site *model.Site, secrets *model.Secrets, short *[]string) *model.Site {
 	copy := *site
 	copy.Auths = make(map[string]model.AuthSpec, len(site.Auths))
 	for name, auth := range site.Auths {
-		auth.Token = maskCredential(auth.Token, secrets)
-		auth.Username = maskCredential(auth.Username, secrets)
-		auth.Password = maskCredential(auth.Password, secrets)
-		auth.Value = maskCredential(auth.Value, secrets)
+		auth.Token = maskCredential(auth.Token, secrets, short)
+		auth.Username = maskCredential(auth.Username, secrets, short)
+		auth.Password = maskCredential(auth.Password, secrets, short)
+		auth.Value = maskCredential(auth.Value, secrets, short)
 		if auth.Login.Body != nil {
-			auth.Login.Body = maskBody(auth.Login.Body, secrets).(map[string]any)
+			auth.Login.Body = maskBody(auth.Login.Body, secrets, short).(map[string]any)
 		}
 		copy.Auths[name] = auth
 	}
 	return &copy
 }
 
+// maskShortScalars preserves YAML syntax while masking short values that the
+// shared registry intentionally declines to register.
+func maskShortScalars(value any, short []string) any {
+	switch v := value.(type) {
+	case string:
+		ref := regexp.MustCompile(`\$\{env:[^}]+\}`)
+		matches := ref.FindAllStringIndex(v, -1)
+		mask := func(s string) string {
+			for _, secret := range short {
+				s = strings.ReplaceAll(s, secret, "***")
+			}
+			return s
+		}
+		var out strings.Builder
+		start := 0
+		for _, match := range matches {
+			out.WriteString(mask(v[start:match[0]]))
+			out.WriteString(v[match[0]:match[1]])
+			start = match[1]
+		}
+		out.WriteString(mask(v[start:]))
+		return out.String()
+	case map[string]any:
+		for key, child := range v {
+			v[key] = maskShortScalars(child, short)
+		}
+	case []any:
+		for i, child := range v {
+			v[i] = maskShortScalars(child, short)
+		}
+	}
+	return value
+}
+
 func writeYAML(d *wiring.Deps, value any) error {
+	var short []string
 	switch v := value.(type) {
 	case *model.Site:
-		value = maskedSite(v, d.Secrets)
+		value = maskedSite(v, d.Secrets, &short)
 	case *model.Config:
 		copy := *v
 		copy.Sites = make(map[string]*model.Site, len(v.Sites))
 		for name, site := range v.Sites {
-			copy.Sites[name] = maskedSite(site, d.Secrets)
+			copy.Sites[name] = maskedSite(site, d.Secrets, &short)
 		}
 		value = &copy
 	}
@@ -388,7 +439,22 @@ func writeYAML(d *wiring.Deps, value any) error {
 	for _, match := range matches {
 		if v, ok := d.Env.Lookup(text[match[2]:match[3]]); ok {
 			d.Secrets.Add(v)
+			if len(v) > 0 && len(v) < 4 {
+				short = append(short, v)
+			}
 		}
+	}
+	if len(short) > 0 {
+		var document any
+		if err := yaml.Unmarshal(data, &document); err != nil {
+			return localError(err)
+		}
+		data, err = yaml.Marshal(maskShortScalars(document, short))
+		if err != nil {
+			return localError(err)
+		}
+		text = string(data)
+		matches = ref.FindAllStringSubmatchIndex(text, -1)
 	}
 	// Keep references verbatim, even if a secret happens to occur in a name.
 	var out strings.Builder

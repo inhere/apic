@@ -3,6 +3,7 @@ package wiring
 
 import (
 	"net/http"
+	"path/filepath"
 
 	"github.com/inhere/apix/internal/auth"
 	"github.com/inhere/apix/internal/config"
@@ -67,7 +68,7 @@ func FetchOptions(d *Deps, name string, site *model.Site) (spec.FetchOptions, er
 	default:
 		return spec.FetchOptions{}, model.Errorf(model.ExitLocal, "spec auth %q must be bearer, basic, or apikey", site.Source.Auth)
 	}
-	provider, err := auth.New(name, envName, site.Source.Auth, identity, env, auth.Deps{Client: client, Secrets: d.Secrets, Redactor: d.Redactor, CacheDir: d.Dir})
+	provider, err := auth.New(name, envName, site.Source.Auth, identity, env, auth.Deps{Client: client, Secrets: d.Secrets, Redactor: d.Redactor, CacheDir: filepath.Join(d.Dir, "cache")})
 	if err != nil {
 		return spec.FetchOptions{}, err
 	}

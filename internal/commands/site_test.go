@@ -182,13 +182,13 @@ func TestSiteFailureRecovery(t *testing.T) {
 func TestConfigPlainCredentials(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("APIX_CONFIG_DIR", dir)
-	cfg := "version: 1\nsites:\n  demo:\n    source: {type: openapi, url: 'https://example.test/sample-password'}\n    auths:\n      demo: {type: basic, username: sample-user, password: sample-password, token: ab, value: sample-value, login: {body: {pin: 123, secret: sample-body}}}\n"
+	cfg := "version: 1\nsites:\n  demo:\n    source: {type: openapi, url: 'https://example.test/sample-password/ab'}\n    auths:\n      demo: {type: basic, username: sample-user, password: sample-password, token: ab, value: sample-value, login: {body: {pin: 123, secret: sample-body}}}\n"
 	assert.NoError(t, os.WriteFile(filepath.Join(dir, "config.yaml"), []byte(cfg), 0600))
 	for _, args := range [][]string{{"site", "show", "demo"}, {"config", "show"}} {
 		t.Run(strings.Join(args, "-"), func(t *testing.T) {
 			code, out := runCommand(t, args...)
 			assert.Eq(t, 0, code)
-			for _, secret := range []string{"sample-user", "sample-password", "sample-value", "sample-body", "123", "token: ab"} {
+			for _, secret := range []string{"sample-user", "sample-password", "sample-value", "sample-body", "123", "token: ab", "/ab"} {
 				assert.False(t, strings.Contains(out, secret))
 			}
 			assert.Contains(t, out, "***")
@@ -197,6 +197,22 @@ func TestConfigPlainCredentials(t *testing.T) {
 	code, out := runCommand(t, "config", "check")
 	assert.Eq(t, 0, code)
 	assert.Contains(t, out, "plaintext credential")
+}
+
+func TestConfigShortReferencedSecret(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("APIX_CONFIG_DIR", dir)
+	t.Setenv("APIX_SHORT_SECRET", "xy")
+	cfg := "version: 1\nsites:\n  demo:\n    source: {type: openapi, url: 'https://example.test/xy'}\n    auths:\n      demo: {type: bearer, token: '${env:APIX_SHORT_SECRET}'}\n"
+	assert.NoError(t, os.WriteFile(filepath.Join(dir, "config.yaml"), []byte(cfg), 0600))
+	for _, args := range [][]string{{"site", "show", "demo"}, {"config", "show"}} {
+		t.Run(strings.Join(args, "-"), func(t *testing.T) {
+			code, out := runCommand(t, args...)
+			assert.Eq(t, 0, code)
+			assert.False(t, strings.Contains(out, "/xy"))
+			assert.Contains(t, out, "${env:APIX_SHORT_SECRET}")
+		})
+	}
 }
 
 func TestSiteRefreshStaticAuth(t *testing.T) {
