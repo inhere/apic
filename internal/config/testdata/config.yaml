@@ -1,0 +1,30 @@
+defaults:
+  output: auto
+  timeout: 30s
+  link_dir: ~/.local/bin
+sites:
+  pet:
+    source: {type: openapi, url: https://pet.example/swagger/doc.json, ttl: 24h}
+    envs:
+      dev:  {base_url: http://127.0.0.1:8080}
+      prod: {base_url: https://pet.example, protect: true}
+    default_env: dev
+    auths:
+      admin: {type: bearer, token: "${env:PET_ADMIN_TOKEN}"}
+      ro: {type: bearer, token: "${env:PET_RO_TOKEN}", allow_methods: [GET, HEAD]}
+      me:
+        type: login
+        login:
+          method: POST
+          path: /api/login
+          body: {username: "${env:PET_USER}", password: "${env:PET_PASS}"}
+        token: {from: body, path: data.token}
+        expires: {from: body, path: data.expires_in}
+        apply: {header: Authorization, value: "Bearer {token}"}
+    default_auth: me
+  demo:
+    source: {type: simple, file: defs/demo.yaml}
+    envs:
+      main: {base_url: https://demo.example}
+    auths:
+      me: {type: basic, username: "${env:DEMO_USER}", password: "${env:DEMO_TOKEN}"}
