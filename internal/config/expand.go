@@ -36,21 +36,30 @@ func ResolveAuth(site *model.Site, name string, env *Env, sec *model.Secrets) (m
 	if !ok {
 		return model.AuthSpec{}, model.Errorf(model.ExitLocal, "unknown auth %q", name)
 	}
-	fields := []*string{&auth.Type, &auth.Token, &auth.Username, &auth.Password, &auth.In, &auth.Name, &auth.Value,
+	// Only credential fields register their expanded values as secrets. Names,
+	// methods and paths are not secret; registering them would mask unrelated
+	// text such as a URL path that happens to contain the username.
+	secretFields := []*string{&auth.Token, &auth.Password, &auth.Value}
+	plainFields := []*string{&auth.Type, &auth.Username, &auth.In, &auth.Name,
 		&auth.Login.Method, &auth.Login.Path, &auth.Login.Token.From, &auth.Login.Token.Path,
 		&auth.Login.Expires.From, &auth.Login.Expires.Path, &auth.Login.Apply.Header,
 		&auth.Login.Apply.Query, &auth.Login.Apply.Value}
-	for _, field := range fields {
-		v, err := Expand(*field, env, sec)
-		if err != nil {
-			return model.AuthSpec{}, err
+	for _, group := range []struct {
+		fields []*string
+		sec    *model.Secrets
+	}{{secretFields, sec}, {plainFields, nil}} {
+		for _, field := range group.fields {
+			v, err := Expand(*field, env, group.sec)
+			if err != nil {
+				return model.AuthSpec{}, err
+			}
+			*field = v
 		}
-		*field = v
 	}
 	if auth.AllowMethods != nil {
 		auth.AllowMethods = append([]string(nil), auth.AllowMethods...)
 		for i, method := range auth.AllowMethods {
-			v, err := Expand(method, env, sec)
+			v, err := Expand(method, env, nil)
 			if err != nil {
 				return model.AuthSpec{}, err
 			}

@@ -183,6 +183,23 @@ func TestExpandAndResolveAuth(t *testing.T) {
 	localError(t, err, "NOT_HERE")
 }
 
+func TestResolveAuthRegistersOnlyCredentials(t *testing.T) {
+	dir := testDir(t)
+	putFile(t, filepath.Join(dir, ".env"), "B_USER=demo\nB_PASS=pass-secret\n")
+	env, err := config.LoadEnv(dir)
+	assert.Require(t, assert.NoErr(t, err))
+	var sec model.Secrets
+	site := &model.Site{Auths: map[string]model.AuthSpec{
+		"me": {Type: "basic", Username: "${env:B_USER}", Password: "${env:B_PASS}"},
+	}}
+	resolved, err := config.ResolveAuth(site, "me", env, &sec)
+	assert.Require(t, assert.NoErr(t, err))
+	assert.Eq(t, "demo", resolved.Username)
+	red := &model.Redactor{Secrets: &sec}
+	// The username is not a credential: a URL path containing it stays readable.
+	assert.Eq(t, "/job/demo-job ***", red.Redact("/job/demo-job pass-secret"))
+}
+
 func TestStateRoundTrip(t *testing.T) {
 	dir := testDir(t)
 	empty, err := config.LoadState(dir)
