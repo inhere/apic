@@ -3,6 +3,7 @@ package spec_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -46,6 +47,54 @@ func TestOpenAPIEquivalent(t *testing.T) {
 		case "pets-search":
 			assert.Eq(t, "Search pets", op.Summary)
 		}
+	}
+}
+
+func TestOpenAPIYAML(t *testing.T) {
+	t.Setenv("APIX_CONFIG_DIR", t.TempDir())
+	for _, tc := range []struct {
+		name string
+		doc  string
+		base string
+	}{
+		{"v2", "swagger: '2.0'\ninfo: {title: Demo, version: '1'}\nhost: demo.local\nbasePath: /\npaths:\n  /pets:\n    get:\n      responses:\n        '200': {description: OK}\n", ""},
+		{"v3", "openapi: 3.0.3\ninfo: {title: Demo, version: '1'}\nservers: [{url: 'http://demo.local/'}]\npaths:\n  /pets:\n    get:\n      responses:\n        '200': {description: OK}\n", "/"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			file := filepath.Join(dir, "spec.yaml")
+			assert.Require(t, assert.NoError(t, os.WriteFile(file, []byte(tc.doc), 0600)))
+			idx, err := (spec.OpenAPILoader{}).Load(context.Background(), model.Source{File: file}, dir)
+			assert.Require(t, assert.NoError(t, err))
+			assert.Eq(t, "http://demo.local", idx.DefaultBaseURL)
+			assert.Eq(t, tc.base, idx.DefaultBasePath)
+			assert.Require(t, assert.Eq(t, 1, len(idx.Ops)))
+			assert.Eq(t, "GET", idx.Ops[0].Method)
+		})
+	}
+}
+
+func TestOpenAPIBodyMedia(t *testing.T) {
+	t.Setenv("APIX_CONFIG_DIR", t.TempDir())
+	for _, tc := range []struct{ media, want string }{
+		{"application/json", "json"},
+		{"application/x-www-form-urlencoded", "form"},
+		{"multipart/form-data", "form"},
+		{"application/xml", "xml"},
+		{"application/octet-stream", "raw"},
+		{"application/problem+json", "raw"},
+	} {
+		t.Run(tc.media, func(t *testing.T) {
+			dir := t.TempDir()
+			file := filepath.Join(dir, "spec.json")
+			doc := fmt.Sprintf(`{"openapi":"3.0.3","info":{"title":"Demo","version":"1"},"paths":{"/pet":{"post":{"requestBody":{"content":{%q:{"schema":{"type":"object"}}}},"responses":{"200":{"description":"OK"}}}}}}`, tc.media)
+			assert.Require(t, assert.NoError(t, os.WriteFile(file, []byte(doc), 0600)))
+			idx, err := (spec.OpenAPILoader{}).Load(context.Background(), model.Source{File: file}, dir)
+			assert.Require(t, assert.NoError(t, err))
+			assert.Require(t, assert.Eq(t, 1, len(idx.Ops)))
+			assert.Require(t, assert.True(t, idx.Ops[0].Body != nil))
+			assert.Eq(t, tc.want, idx.Ops[0].Body.Type)
+		})
 	}
 }
 

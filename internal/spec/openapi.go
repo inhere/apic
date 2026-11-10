@@ -74,9 +74,7 @@ func loadOpenAPI(ctx context.Context, src model.Source, raw []byte) (*model.Inde
 		}
 		if len(doc.Servers) > 0 && doc.Servers[0] != nil {
 			if u, parseErr := url.Parse(doc.Servers[0].URL); parseErr == nil {
-				if u.Path != "/" {
-					index.DefaultBasePath = u.Path
-				}
+				index.DefaultBasePath = u.Path
 				if u.Scheme != "" && u.Host != "" {
 					index.DefaultBaseURL = u.Scheme + "://" + u.Host
 				}
@@ -206,9 +204,9 @@ func schemaSummary(ref *openapi3.SchemaRef) model.SchemaSummary {
 
 func bodyType(media string) string {
 	switch {
-	case strings.Contains(media, "json"):
+	case media == "application/json", strings.HasPrefix(media, "application/json;"):
 		return "json"
-	case media == "application/x-www-form-urlencoded", strings.HasPrefix(media, "multipart/form-data"):
+	case media == "application/x-www-form-urlencoded", strings.HasPrefix(media, "application/x-www-form-urlencoded;"), media == "multipart/form-data", strings.HasPrefix(media, "multipart/form-data;"):
 		return "form"
 	case strings.Contains(media, "xml"):
 		return "xml"
