@@ -1,7 +1,7 @@
 <!-- template_id: plan; template_version: 1.3.0 -->
 # apix 一期（MVP）实施计划
 
-> 状态：Draft 0.2 / 待人工计划批准
+> 状态：Draft 0.2 / 已批准（用户 2026-11-10：“批准 apix 一期计划 0.2（接受未复核修订）；开始实施；建好gofer plan 跟进，简单的任务可以通过gofer 可以交给 suga gpt 模型做”）
 
 ## 修订记录
 
