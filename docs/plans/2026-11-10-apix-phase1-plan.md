@@ -110,9 +110,12 @@
 
 1. **P1 工作树**：`git status --short` 为空，HEAD 至少包含 `2cc8022`。否则停下，查清归属。
 2. **P2 Go 版本**：容器内 `go version` ≥ 1.25（当前为 1.25.10）；`go.mod` 写 `go 1.25`。
-3. **P3 真实 spec（A1 与 T04 都依赖它）**：用户提供至少一份 Swagger 2.0 spec 的 URL，或者把文件放到工作区 `<WP>/tmp/apix-specs/`。
-   - 没有提供时，T04 可以用公开的 petstore v2/v3 样例先完成。
-   - 但 A1 保持未完成，完成 Gate 不得报完成。
+3. **P3 真实 spec（A1 与 T04 都依赖它）**：使用相邻工作区两份 swaggo 生成的 Swagger 2.0 文件。实施时复制到 `<WP>/tmp/apix-specs/`，不进仓库，具体来源路径记在进度记录里。
+   - 规模大的一份有 30 个操作，带 apikey 类 securityDefinitions，`basePath` 为 `/`，有 host。
+   - 规模小的一份有 9 个操作，没有 host 和 basePath。用它验证“`site add` 没有给 base URL 时报错”，以及加上 `--base-url` 后可以正常使用。
+   - 两份文件里所有操作都没有 operationId，用来验证“由方法和路径生成命令名”。
+   - 用户另外提供带 `basePath` 前缀的真实 spec 时，A1 一并验证。
+
 4. **P4 解析库锁定（设计 Q4）**：T04 开工前，用一个 20 行左右的探针程序（放 `<WP>/tmp/apix-probe/`），在 P3 的 spec 和 petstore v2 上调用 kin-openapi 的加载与 `openapi2conv.ToV3`。
    - 能得到全部操作、`basePath` 和参数，就锁定 kin-openapi。
    - 失败时改用 libopenapi 再试一次。仍失败就停下，按 Semantic Amendment 报回。
