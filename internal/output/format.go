@@ -15,6 +15,9 @@ func Format(w io.Writer, body []byte, contentType string, mode string, tty bool)
 			body = formatted.Bytes()
 		}
 	}
-	_, err := w.Write(body)
+	n, err := w.Write(body)
+	if err == nil && n != len(body) {
+		return io.ErrShortWrite
+	}
 	return err
 }

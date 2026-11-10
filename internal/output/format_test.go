@@ -2,10 +2,15 @@ package output
 
 import (
 	"bytes"
+	"io"
 	"testing"
 
 	"github.com/gookit/goutil/x/assert"
 )
+
+type shortWriter struct{}
+
+func (shortWriter) Write(p []byte) (int, error) { return len(p) / 2, nil }
 
 func TestFormat(t *testing.T) {
 	for _, tc := range []struct {
@@ -24,4 +29,7 @@ func TestFormat(t *testing.T) {
 			assert.Eq(t, tc.want, out.String())
 		})
 	}
+	t.Run("short write", func(t *testing.T) {
+		assert.Eq(t, io.ErrShortWrite, Format(shortWriter{}, []byte("body"), "", "raw", false))
+	})
 }
