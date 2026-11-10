@@ -504,3 +504,6 @@
 - 2026-11-10 P4：用探针 `<WP>/tmp/apix-probe/` 验证，kin-openapi v0.153.0 能完成 `openapi2` 解析加 `openapi2conv.ToV3` 转换，两份的操作数、参数和请求体都正确，锁定 kin-openapi。
 - 2026-11-10 Corrective（T04，owner 内修正）：2.0 spec 没写 `schemes` 时，kin 转换出的 server 默认是 `https://`。T04 改为：从 URL 加载时取该 URL 的 scheme，从文件加载时用 `http`。验收不变。
 - 2026-11-10 派发：T01 交给 suga gpt-6.1-terra（job-20261110-223804-7b553a29，worktree `apix-t01`）。
+- 2026-11-10 T01（076783e）、T02（6bbc623）、T03（138801c）由 suga 实施后合并；T02、T03 第一次运行都因 go.mod 不在任务书范围内停下，补充授权后续跑完成。
+- 2026-11-10 T06（9301799）由 sonnet 子 agent 实施，在主机提交并合并。实现在计划签名基础上的扩展：`CheckProtect` 多一个 `prompt` 参数；`Call` 增加 `Env`、`Auth`、`Client`、`Stderr`、`Prompt` 字段；`Input` 增加 `Stdin` 字段。这些都属于 owner 内的扩展，验收不变。
+- 2026-11-10 Operational Discovery：T07 的 `auth`、`use` 命令（internal/commands）改到 T05 之后，随 T08 一起做，避免与 T05 同时修改 commands 和 wiring。T07 本次只做 internal/auth，验收项不变，归入 T08 的验证。
