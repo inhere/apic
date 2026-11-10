@@ -1,0 +1,17 @@
+# defs/jenkins.yaml from the approved design
+operations:
+  job-info:
+    get: /job/{name}/api/json
+    summary: 查看 job 信息
+  job-build:
+    post: /job/{name}/buildWithParameters
+    summary: 触发参数化构建
+    query: [BRANCH, ENV]
+  job-log:
+    get: /job/{name}/{build}/consoleText
+    output: raw
+  create-item:
+    post: /createItem
+    params:
+      - {name: name, in: query, required: true, desc: 新 job 名}
+    body: {type: xml}
