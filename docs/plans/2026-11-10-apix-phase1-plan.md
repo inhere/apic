@@ -516,3 +516,6 @@
   - `site add --auth-for-spec` 本期不做：需要认证才能拉取的 spec，在 `sites/<name>.yaml` 中配置 `source.auth`，再用 `site refresh` 拉取。设计“拉取 spec 时的认证”仍然满足，只是少了 add 时的快捷选项（Corrective，验收不变）。
   - 遗留的整理项：`site.go` 中的配置打码逻辑宜移入 `model.Redactor`。
 - 2026-11-11 T08 交给 sonnet 子 agent。同时并入两项 T05 遗留：显式 `site refresh` 失败时退出 1；读取有效缓存时不构造认证与 TLS 依赖。
+- 2026-11-11 T08（主机合并）完成。用真实 spec 做 dry-run 冒烟通过：`site add`、`ops`、`desc`、两种调用方式、退出码 2 的两个用例。
+- 2026-11-11 用户新增要求：参照其他项目加 Makefile、README、`.github` CI。Makefile 与 CI 已提交（ddea113），README 随 T10 完善。设计 Q3 由用户决定：远端仓库为 `inhere/apix`。建仓和推送仍是外部动作，到时另行确认。
+- 2026-11-11 容器中 `git init` 留下 `core.filemode=true`，导致容器内看到权限位差异；已改为 false，与 Windows 主机一致。
