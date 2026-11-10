@@ -19,6 +19,7 @@ func TestSecretsAndRedactor(t *testing.T) {
 	for _, tc := range []struct{ name, input, want string }{
 		{"plaintext", "token=long secret+value", "token=***"},
 		{"query escaped", "?token=" + url.QueryEscape("long secret+value"), "?token=***"},
+		{"query percent space", "?token=long%20secret%2Bvalue", "?token=***"},
 		{"short ignored", "abc", "abc"},
 	} {
 		t.Run(tc.name, func(t *testing.T) { assert.Eq(t, tc.want, redactor.Redact(tc.input)) })

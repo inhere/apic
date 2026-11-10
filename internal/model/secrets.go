@@ -37,7 +37,7 @@ func (s *Secrets) snapshot() []string {
 	for v := range s.values {
 		values = append(values, v)
 		if escaped := url.QueryEscape(v); escaped != v {
-			values = append(values, escaped)
+			values = append(values, escaped, strings.ReplaceAll(escaped, "+", "%20"))
 		}
 	}
 	// Replace longer variants first so overlapping secrets cannot expose suffixes.
