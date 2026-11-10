@@ -1,0 +1,350 @@
+package commands
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"os"
+	"path/filepath"
+	"regexp"
+	"slices"
+	"sort"
+	"strings"
+	"text/tabwriter"
+
+	"github.com/goccy/go-yaml"
+	"github.com/gookit/gcli/v3"
+	"github.com/inhere/apix/internal/config"
+	"github.com/inhere/apix/internal/model"
+	"github.com/inhere/apix/internal/output"
+	"github.com/inhere/apix/internal/spec"
+	"github.com/inhere/apix/internal/wiring"
+)
+
+type siteAddOptions struct{ spec, def, baseURL string }
+type siteListOptions struct{ output string }
+
+func siteCommand() *gcli.Command {
+	add := &siteAddOptions{}
+	list := &siteListOptions{}
+	return &gcli.Command{Name: "site", Desc: "Manage API sites", Subs: []*gcli.Command{
+		{Name: "add", Desc: "Add a site; for authenticated specs configure source.auth and auths in its YAML, then run site refresh", Config: func(c *gcli.Command) {
+			c.AddArg("name", "Site name", true)
+			c.StrOpt(&add.spec, "spec", "", "", "OpenAPI URL or file")
+			c.StrOpt(&add.def, "def", "", "", "Simple definition file")
+			c.StrOpt(&add.baseURL, "base-url", "", "", "Default base URL")
+		}, Func: func(c *gcli.Command, _ []string) error { return addSite(c.Arg("name").String(), add) }},
+		{Name: "rm", Desc: "Remove a managed site", Config: siteNameArg, Func: func(c *gcli.Command, _ []string) error { return removeSite(c.Arg("name").String()) }},
+		{Name: "ls", Desc: "List sites", Config: func(c *gcli.Command) { c.StrOpt(&list.output, "output", "o", "", "Output format (json)") }, Func: func(c *gcli.Command, _ []string) error { return listSites(list.output) }},
+		{Name: "show", Desc: "Show a site", Config: siteNameArg, Func: func(c *gcli.Command, _ []string) error { return showSite(c.Arg("name").String()) }},
+		{Name: "refresh", Desc: "Refresh a site index", Config: siteNameArg, Func: func(c *gcli.Command, _ []string) error { return refreshSite(c.Arg("name").String()) }},
+	}}
+}
+
+func siteNameArg(c *gcli.Command) { c.AddArg("name", "Site name", true) }
+
+func localError(err error) error {
+	if err == nil {
+		return nil
+	}
+	var coded *model.CodedError
+	if errors.As(err, &coded) {
+		return coded
+	}
+	return model.Errorf(model.ExitLocal, "%v", err)
+}
+
+func writeString(w io.Writer, s string) error { _, err := io.WriteString(w, s); return localError(err) }
+
+func siteLookup(d *wiring.Deps, name string) (*model.Site, error) {
+	site, ok := d.Cfg.Sites[name]
+	if !ok {
+		return nil, model.Errorf(model.ExitLocal, "site %q does not exist", name)
+	}
+	return site, nil
+}
+
+func loadIndex(d *wiring.Deps, name string, site *model.Site, refresh bool) (*model.Index, []string, error) {
+	fetch, err := wiring.FetchOptions(d, name, site)
+	if err != nil {
+		return nil, nil, err
+	}
+	index, warnings, err := spec.Index(context.Background(), name, site.Source, d.Dir, spec.IndexOptions{Refresh: refresh, Client: fetch.Client, Apply: fetch.Apply})
+	if err != nil {
+		return nil, nil, model.Errorf(model.ExitLocal, "%s", d.Redactor.Redact(err.Error()))
+	}
+	return index, warnings, nil
+}
+
+func printWarnings(d *wiring.Deps, warnings []string) error {
+	for _, warning := range warnings {
+		if err := writeString(os.Stderr, "warning: "+d.Redactor.Redact(warning)+"\n"); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func addSite(name string, opt *siteAddOptions) (result error) {
+	if (opt.spec == "") == (opt.def == "") {
+		return model.Errorf(model.ExitUsage, "provide exactly one of --spec or --def")
+	}
+	if err := config.ValidateSiteName(name); err != nil {
+		return err
+	}
+	d, err := wiring.Load()
+	if err != nil {
+		return err
+	}
+	if _, ok := d.Cfg.Sites[name]; ok {
+		return model.Errorf(model.ExitLocal, "site %q already exists", name)
+	}
+	file := filepath.Join(d.Dir, "sites", name+".yaml")
+	if _, err := os.Stat(file); err == nil {
+		return model.Errorf(model.ExitLocal, "site %q already exists", name)
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return localError(err)
+	}
+	src := model.Source{Type: "openapi"}
+	if opt.def != "" {
+		src.Type = "simple"
+		src.File, err = filepath.Abs(opt.def)
+	} else if strings.HasPrefix(opt.spec, "http://") || strings.HasPrefix(opt.spec, "https://") {
+		src.URL = opt.spec
+	} else {
+		src.File, err = filepath.Abs(opt.spec)
+	}
+	if err != nil {
+		return localError(err)
+	}
+	if err := os.MkdirAll(d.Dir, 0700); err != nil {
+		return localError(err)
+	}
+	tmp, err := os.MkdirTemp(d.Dir, ".apix-index-")
+	if err != nil {
+		return localError(err)
+	}
+	defer func() {
+		if err := os.RemoveAll(tmp); err != nil {
+			fmt.Fprintln(os.Stderr, "warning: remove temporary index:", err)
+		}
+	}()
+	tempDeps := *d
+	tempDeps.Dir = tmp
+	site := &model.Site{Source: src}
+	idx, warnings, err := loadIndex(&tempDeps, name, site, true)
+	if err != nil {
+		return err
+	}
+	base := opt.baseURL
+	if base == "" {
+		base = idx.DefaultBaseURL
+	}
+	if base == "" {
+		return model.Errorf(model.ExitLocal, "definition has no base URL; provide --base-url")
+	}
+	site.DefaultEnv = "default"
+	site.Envs = map[string]model.Env{"default": {BaseURL: base}}
+	data, err := yaml.Marshal(site)
+	if err != nil {
+		return localError(err)
+	}
+	if err := os.MkdirAll(filepath.Dir(file), 0700); err != nil {
+		return localError(err)
+	}
+	f, err := os.OpenFile(file, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
+	if err != nil {
+		return localError(err)
+	}
+	created := []string{file}
+	committed := false
+	defer func() {
+		if committed {
+			return
+		}
+		for _, path := range created {
+			if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
+				result = model.Errorf(model.ExitLocal, "%v; cleanup %s: %v", result, path, err)
+			}
+		}
+	}()
+	_, writeErr := f.Write(data)
+	closeErr := f.Close()
+	if writeErr != nil || closeErr != nil {
+		return localError(errors.Join(writeErr, closeErr))
+	}
+	// Publish the already-built cache without overwriting any pre-existing files.
+	if src.Type == "openapi" {
+		dest := filepath.Join(d.Dir, "cache", "specs")
+		if err := os.MkdirAll(dest, 0700); err != nil {
+			return localError(err)
+		}
+		for _, suffix := range []string{".raw", ".index.json", ".meta.json"} {
+			data, err := os.ReadFile(filepath.Join(tmp, "cache", "specs", name+suffix))
+			if err != nil {
+				return localError(err)
+			}
+			path := filepath.Join(dest, name+suffix)
+			cache, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
+			if err != nil {
+				return localError(err)
+			}
+			created = append(created, path)
+			_, writeErr := cache.Write(data)
+			closeErr := cache.Close()
+			if writeErr != nil || closeErr != nil {
+				return localError(errors.Join(writeErr, closeErr))
+			}
+		}
+	}
+	d.State.ManagedSites = append(d.State.ManagedSites, name)
+	if err := config.SaveState(d.Dir, d.State); err != nil {
+		return err
+	}
+	committed = true
+	if err := printWarnings(d, warnings); err != nil {
+		return err
+	}
+	return writeString(os.Stdout, fmt.Sprintf("%s\t%d\t%s\n", name, len(idx.Ops), base))
+}
+
+func removeSite(name string) error {
+	d, err := wiring.Load()
+	if err != nil {
+		return err
+	}
+	site, err := siteLookup(d, name)
+	if err != nil {
+		return err
+	}
+	if filepath.Clean(site.Origin) == filepath.Clean(filepath.Join(d.Dir, "config.yaml")) {
+		return model.Errorf(model.ExitLocal, "site %q is in config.yaml; edit it manually", name)
+	}
+	if !slices.Contains(d.State.ManagedSites, name) {
+		return model.Errorf(model.ExitLocal, "site %q is not managed; edit it manually", name)
+	}
+	if err := os.Remove(filepath.Join(d.Dir, "sites", name+".yaml")); err != nil {
+		return localError(err)
+	}
+	if err := spec.Remove(d.Dir, name); err != nil {
+		return localError(err)
+	}
+	files, err := filepath.Glob(filepath.Join(d.Dir, "cache", "tokens", name+".*"))
+	if err != nil {
+		return localError(err)
+	}
+	for _, file := range files {
+		if err := os.Remove(file); err != nil && !errors.Is(err, os.ErrNotExist) {
+			return localError(err)
+		}
+	}
+	d.State.ManagedSites = slices.DeleteFunc(d.State.ManagedSites, func(s string) bool { return s == name })
+	return config.SaveState(d.Dir, d.State)
+}
+
+type siteRow struct {
+	Name       string `json:"name"`
+	Source     string `json:"source"`
+	File       string `json:"file"`
+	DefaultEnv string `json:"default_env"`
+}
+
+func listSites(format string) error {
+	d, err := wiring.Load()
+	if err != nil {
+		return err
+	}
+	names := make([]string, 0, len(d.Cfg.Sites))
+	for name := range d.Cfg.Sites {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	rows := make([]siteRow, 0, len(names))
+	for _, name := range names {
+		s := d.Cfg.Sites[name]
+		rows = append(rows, siteRow{name, s.Source.Type, s.Origin, s.DefaultEnv})
+	}
+	if format == "json" {
+		return writeJSON(rows)
+	}
+	if format != "" {
+		return model.Errorf(model.ExitUsage, "unsupported output format %q", format)
+	}
+	w := tabwriter.NewWriter(os.Stdout, 0, 4, 2, ' ', 0)
+	if _, err := fmt.Fprintln(w, "NAME\tSOURCE\tFILE\tDEFAULT ENV"); err != nil {
+		return localError(err)
+	}
+	for _, r := range rows {
+		if _, err := fmt.Fprintf(w, "%s\t%s\t%s\t%s\n", r.Name, r.Source, r.File, r.DefaultEnv); err != nil {
+			return localError(err)
+		}
+	}
+	return localError(w.Flush())
+}
+
+func writeJSON(value any) error {
+	data, err := json.Marshal(value)
+	if err != nil {
+		return localError(err)
+	}
+	if err := output.Format(os.Stdout, data, "application/json", "json", false); err != nil {
+		return localError(err)
+	}
+	return writeString(os.Stdout, "\n")
+}
+
+func writeYAML(d *wiring.Deps, value any) error {
+	data, err := yaml.Marshal(value)
+	if err != nil {
+		return localError(err)
+	}
+	ref := regexp.MustCompile(`\$\{env:([^}]+)\}`)
+	text := string(data)
+	matches := ref.FindAllStringSubmatchIndex(text, -1)
+	for _, match := range matches {
+		if v, ok := d.Env.Lookup(text[match[2]:match[3]]); ok {
+			d.Secrets.Add(v)
+		}
+	}
+	// Keep references verbatim, even if a secret happens to occur in a name.
+	var out strings.Builder
+	start := 0
+	for _, match := range matches {
+		out.WriteString(d.Redactor.Redact(text[start:match[0]]))
+		out.WriteString(text[match[0]:match[1]])
+		start = match[1]
+	}
+	out.WriteString(d.Redactor.Redact(text[start:]))
+	return writeString(os.Stdout, out.String())
+}
+func showSite(name string) error {
+	d, err := wiring.Load()
+	if err != nil {
+		return err
+	}
+	site, err := siteLookup(d, name)
+	if err != nil {
+		return err
+	}
+	return writeYAML(d, site)
+}
+func refreshSite(name string) error {
+	d, err := wiring.Load()
+	if err != nil {
+		return err
+	}
+	site, err := siteLookup(d, name)
+	if err != nil {
+		return err
+	}
+	idx, warnings, err := loadIndex(d, name, site, true)
+	if err != nil {
+		return err
+	}
+	if err := printWarnings(d, warnings); err != nil {
+		return err
+	}
+	return writeString(os.Stdout, fmt.Sprintf("%s\t%d\n", name, len(idx.Ops)))
+}
