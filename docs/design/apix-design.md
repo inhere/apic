@@ -1,13 +1,14 @@
 <!-- template_id: design; template_version: 1.2.0 -->
 # apix：按 API 定义动态生成命令的通用 API CLI 设计
 
-> 状态：Draft 0.1 / 待人工计划批准
+> 状态：Draft 0.2 / 待人工计划批准
 
 ## 修订记录
 
 | 版本 | 日期 | 作者 | 摘要 |
 |---|---|---|---|
 | 0.1 | 2026-11-10 | Claude（inhere 确定方向：自研、名为 apix、配置目录 `~/.config/apix` + 同目录 `.env`、支持自定义简单站点定义、写完整设想、实施先做一期） | 初稿：统一操作模型、OpenAPI 与简单定义两种来源、环境与认证分离、操作与原始路径两种调用、面向 agent 的约束、快捷命令、三期路线 |
+| 0.2 | 2026-11-10 | Claude | 处理第 1 轮合并轴评审（A1–A2 阻塞，B1–B9 纠正，S1–S5 建议）：token 缓存按 env 隔离并带指纹；站点写入改为只写 `sites/*.yaml`，简单定义移到 `defs/`；补 gcli 实测约束（原始路径参数、`--api` 改写、全局选项双注册、退出码统一）；补 URL 组成与 basePath；凭证不出主机（路径、重定向）；按来源打码；快捷命令的命名、哈希与 cmd 限制；写保护提到认证之前；登记 SR2003 偏离；`.env` 只解析不写进程环境 |
 
 > 仅语义变化递增版本；纯 identity/provenance/元数据纠正沿用原版本，并在 Git/进度记录中留痕。
 
@@ -88,7 +89,14 @@ apix link pet --name petctl                                   # 生成快捷命�
 
 - 规范：入口薄、命令放 `internal/commands`（GR107）；装配只装配（GR108）；不吞写入错误（GR109）；CLI 经真实分发测试（GR110）；gcli 位置参数先声明再取值，选项绑定命令结构体，入口 `os.Exit(app.Run(nil))`（SR2003）；目录结构参照 gofer 与 suga（SR2004）；测试断言用 `goutil/x/assert`（SR2002）。
 - gcli 的 `App.Add`/`AddCommand` 可以在 `Run` 前注册命令，`Command.Subs` 支持子命令（`gookit2/gcli/app.go:221`、`cmd.go:98`）。动态命令的做法：先预扫描 argv 定位站点名，只为该站点注册命令，再调用 `app.Run`。
-- 配置目录与 `.env` 的先例在 gofer：配置目录为 `$GOFER_CONFIG_DIR` 或 `~/.config/gofer`，加载其中的 `.env`，已导出的 OS 环境变量优先（`inhere-tools/gofer/internal/config/dotenv.go`）。apix 照此实现，`.env` 解析复用 `goutil/envutil`（`gookit2/goutil/envutil/dotenv.go`）。
+- gcli 行为（评审在最小程序上实测）：
+  - 命令没有声明位置参数时，多出来的位置参数会被当作子命令名，报 not found 并退出 2（`gcli/cmd.go:484-500`）。
+  - app 级 flagset 不重排参数，解析遇到第一个非选项就停（`app.go:106-113`）。
+  - 选项同时注册在 `app.Flags()` 和 `<site>` 的 SharedOpts 上并绑定同一变量时，写在站点名前、站点名后、操作名后都能解析。
+  - 全局层出现未知选项时退出 0（`app.go:555-556`）。
+  - 命令返回的普通 error 映射为 2（`app.go:571-575`）。
+- 配置目录与 `.env` 的先例在 gofer：配置目录为 `$GOFER_CONFIG_DIR` 或 `~/.config/gofer`，依次加载配置目录和当前目录的 `.env`，已导出的 OS 环境变量优先（`inhere-tools/gofer/internal/config/dotenv.go:40-72`）。
+- `goutil/envutil` 加载 `.env` 时会调用 `os.Setenv`，并把键名转成大写（`dotenv.go:137-143`）。所以 apix 只解析 `.env` 文件格式，得到的值存进自己的 map，不写进程环境，键名区分大小写（D14）。
 - HTTP 客户端用 `gookit/greq`。
 - OpenAPI 解析候选是 kin-openapi：支持 3.x，`openapi2conv` 负责 2.0→3.0 转换。最终选型在计划阶段用两份真实内部 spec 核实（见 Q4）。
 - Restish 的能力与边界来自公开资料（pkg.go.dev、项目文档），只作参考。
@@ -113,13 +121,26 @@ argv ─▶ 预扫描站点名 ─▶ 读索引并注册动态命令 ─▶ gcli
 ~/.config/apix/
   config.yaml          # 用户编辑：全局默认、站点、环境、认证（不写明文密钥）
   .env                 # 密钥：KEY=VALUE；已导出的 OS 环境变量优先
-  sites/<name>.yaml    # 可选：较长的站点配置或简单定义，可从 config.yaml 引用
+  sites/<name>.yaml    # 一个文件一个站点（结构同 config.yaml 的 sites.<name>）；自动加载；site add 写在这里
+  defs/<name>.yaml     # 简单定义文件
   state.yaml           # apix 写入：各站点当前的 env/auth、已生成的快捷命令
   cache/specs/<site>.* # 原始 spec、操作索引、ETag 与获取时间
-  cache/tokens/<site>.<auth>.json   # login 认证缓存的 token，权限 0600
+  cache/tokens/<site>.<env>.<auth>.json   # login 缓存的 token，权限 0600；带指纹
 ```
 
-`config.yaml` 只由用户编辑，apix 写入的状态放 `state.yaml`。这样 `apix use` 不会改写用户的配置文件，注释和格式都能保留。只有 `apix site add` 会追加站点配置；它在文件末尾追加一段，不重排已有内容（具体做法见 D5）。
+文件写入规则（D5）：
+
+- apix 永远不改写 `config.yaml`。
+- `site add` 只新建 `sites/<name>.yaml`。站点名已在 config.yaml 或 sites/ 中存在时报错。
+- `site rm` 只删 apix 自己建的 `sites/<name>.yaml`（由 state.yaml 记录），并清理对应缓存。写在 config.yaml 里的站点拒绝删除，提示用户手动编辑。
+- `apix use` 只写 state.yaml。
+- state.yaml 和 token 缓存都先写临时文件再 rename，避免并发调用时写出半个文件。
+
+**token 缓存隔离**：
+
+- 缓存键是 `<site>.<env>.<auth>`。
+- 缓存文件里记一个指纹：base_url 加上 login 配置（展开密钥前的原文）的哈希。指纹不一致时作废缓存，重新登录。
+- 这样切换 env 时，不会把一个环境的 token 发到另一个环境。
 
 ### config.yaml 示例
 
@@ -151,7 +172,7 @@ sites:
     default_auth: me
 
   jenkins:
-    source: {type: simple, file: sites/jenkins.yaml}
+    source: {type: simple, file: defs/jenkins.yaml}
     envs:
       main: {base_url: https://ci.internal}
     auths:
@@ -163,7 +184,7 @@ sites:
 给接口少的服务用。字段尽量少，能从路径推出来的就不必写：
 
 ```yaml
-# sites/jenkins.yaml
+# defs/jenkins.yaml
 operations:
   job-info:
     get: /job/{name}/api/json          # 方法: 路径 的简写；路径里的 {name} 自动成为必填参数
@@ -192,6 +213,27 @@ apix [全局选项] <site> -X <METHOD> <path> [请求选项]     # 按原始路�
 apix --api <site> ...                                    # 与上面等价的写法，供脚本和快捷命令用
 ```
 
+**gcli 上的落地约定**（依据见“已确认事实”中的 gcli 实测）：
+
+- **原始路径**：`<site>` 命令声明一个可选位置参数 `path`，各操作子命令不声明位置参数。
+  - `-X/-d/-f/-H` 定义在 `<site>` 命令上。
+  - 作为 path 的值必须以单个 `/` 开头。否则说明用户输错了操作名，报“未知操作”并退出 2，不发请求，避免 `pet list-userz` 被当成 GET 请求发出去。
+- **`--api`**：预扫描时把 `--api X` 或 `--api=X` 从 argv 中摘掉，改写成位置参数 X，再交给 `app.Run`。
+  - 预扫描要知道哪些全局选项带值，才能正确跳过选项的值。
+  - 预扫描还要校验全局选项；遇到未知选项时自己报错并返回 2，弥补 gcli 返回 0 的问题（另给 gcli 立 issue 修复）。
+- **全局选项**：同时注册在 `app.Flags()` 和 `<site>` 的 SharedOpts 上，绑定同一变量。写在站点名前、站点名后、操作名后都能生效。
+
+**站点名与 URL**：
+
+- **站点名**：限定为 `^[a-z][a-z0-9-]*$`，不能含 `:`（gcli 会把它当成命令路径拆开）。
+- **保留名**：站点名不能使用下表的管理命令名，也不能使用 `help`。
+- **URL 组成**：
+  - 按操作调用时，URL = `env.base_url` + `base_path` + 操作路径。`base_path` 默认取 Swagger 2.0 的 `basePath` 或 OAS `servers[0]` 的路径部分，env 里可以覆盖；简单定义默认为空。
+  - 按原始路径调用时，URL 只是 `base_url` + path。
+  - path 参数的值用 `url.PathEscape` 转义。
+- **`site add` 的默认环境**：`site add` 接受 `--base-url`。没有给出时，从 spec 的 host/schemes 或 servers 生成一个名为 `default` 的 env。两者都没有时报错，所以注册完就能直接调用。
+- **拉取 spec 时的认证**：`source` 可以写 `auth: <名>`。需要认证的 spec 地址用该认证去拉取，这时只允许 bearer、basic、apikey 三种认证。
+
 管理命令都是顶层保留字，站点名不能和它们重名（`site add` 时校验）：
 
 | 命令 | 作用 |
@@ -208,8 +250,14 @@ apix --api <site> ...                                    # 与上面等价的写
 
 **参数映射**：
 
-- path、query、header 参数都映射为同名长选项 `--<name>`，类型和必填按定义校验。
-- 参数名与全局选项冲突，或者不是合法的选项名时，改用 `-p name=value`。`-p` 对任何参数都可用。
+- path、query、header 参数都映射为同名长选项 `--<name>`。
+  - 这些选项在运行时注册（如 `StrOpt`），不绑定命令结构体。这是对 SR2003 的偏离，理由见 D15。静态的管理命令仍按 SR2003 写。
+  - 必填与类型由 apix 在发请求前自己校验，失败退出 1。gcli 的 Required 不用于这些选项。
+- 以下情况不生成 `--<name>`，只能用 `-p name=value`（`-p` 对任何参数都可用）：
+  - 参数名与全局选项冲突；
+  - 参数名与 gcli 内置的 `-h/--help`、`-V/--version`、`--gen-completion` 冲突；
+  - 同名参数出现在不同位置（如 path 的 `id` 和 query 的 `id`），这时写 `-p query.id=1`；
+  - 参数名不是合法的选项名。
 - 请求体有三种传法：
   - `-d @file.json`，`-d -` 表示从 stdin 读。
   - `-d '<json>'` 直接给内容。
@@ -233,7 +281,7 @@ apix --api <site> ...                                    # 与上面等价的写
 
 ### 代码组织
 
-参照 gofer（`inhere-tools/gofer/cmd/gofer/main.go` + `internal/commands/`）与 suga（`internal/wiring` + 分层守卫测试），无偏离（SR2004）。
+参照 gofer（`inhere-tools/gofer/cmd/gofer/main.go` + `internal/commands/`）与 suga（`internal/wiring` + 分层守卫测试），目录结构无偏离（SR2004）。唯一的偏离是动态操作的选项不绑定命令结构体（SR2003，见 D15）。
 
 ```
 cmd/apix/main.go           # 只注入构建信息、创建 app、os.Exit(app.Run(nil))（GR107）
@@ -293,13 +341,13 @@ sequenceDiagram
     C->>C: 解析 env/auth：单次选项 > state.yaml > default_*
     C->>R: 操作 + 参数 + env
     R->>R: 校验必填参数与类型，展开路径
+    R->>R: 写保护检查（protect / allow_methods），被拒绝时不登录也不发请求
     R->>A: Apply（login：没有可用缓存时先登录）
     A-->>R: 请求头/query 已附带凭证
-    R->>R: 写保护检查（protect / allow_methods）
-    R->>API: 发送
+    R->>API: 发送（不自动跟随重定向）
     API-->>R: 401
     R->>A: Refresh（重新登录，只重试一次）
-    R->>API: 重发
+    R->>API: 重发（请求体已缓冲，stdin 读入的也能重放）
     API-->>R: 2xx + body
     R-->>U: stdout 输出 body，按状态码返回退出码
 ```
@@ -307,22 +355,30 @@ sequenceDiagram
 ### 写保护
 
 - 认证配置了 `allow_methods`，而本次方法不在列表里：直接拒绝，退出码 6。
-- 环境标记了 `protect: true`，而方法不是 GET/HEAD/OPTIONS：要求带 `--yes`。在终端里可以交互确认；非终端（agent 或管道）不加 `--yes` 一律拒绝，退出码 6。
-- `--dry-run` 不发请求，不受上面两条限制。
+- 环境标记了 `protect: true`，而方法不是 GET/HEAD/OPTIONS：要求带 `--yes`。
+  - 只有 stdin 和 stderr 都是终端、且没有设置 `APIX_NO_PROMPT` 时才交互确认。
+  - 其他情况（agent、管道）不加 `--yes` 一律拒绝，退出码 6。
+- 方法先统一转成大写再比较。
+- 写保护检查在认证之前，被拒绝的请求不会触发登录。login 请求本身不受写保护限制。
+- `--dry-run` 不发请求，不受上面这些限制。
 
 ### 退出码（对外契约，定后不改）
 
 | 码 | 含义 |
 |---|---|
 | 0 | 2xx / 3xx |
-| 1 | 本地错误：配置、定义、参数校验 |
-| 2 | 命令用法错误（gcli） |
-| 3 | 网络错误或超时 |
-| 4 | 4xx（401 重登后仍失败也是 4） |
-| 5 | 5xx |
+| 1 | 本地错误：配置、定义、apix 自己做的参数校验（必填、类型） |
+| 2 | 命令用法错误：选项解析失败、未知命令或操作、未知全局选项 |
+| 3 | 网络错误或超时（login 请求遇到网络错误也是 3） |
+| 4 | 4xx（401 重登后仍失败也是 4；login 请求返回 4xx 也是 4） |
+| 5 | 5xx（login 请求返回 5xx 也是 5） |
 | 6 | 写保护拒绝 |
 
-stdout 只输出响应体，其他信息都写 stderr，保证 `apix ... | jq` 这类管道可用。`-o json` 时 4xx/5xx 的响应体也原样输出到 stdout，方便 agent 读错误信息。
+实现方式：命令统一返回 gcli 能识别的带码错误（errorx），由 gcli 按其中的码退出。不返回普通 error，因为 gcli 会把它映射为 2。CLI 测试经真实分发逐一覆盖每个退出码。
+
+stdout 只输出响应体，其他信息都写 stderr，保证 `apix ... | jq` 这类管道可用。不论用哪种 `-o`，4xx/5xx 的响应体都原样输出到 stdout，方便 agent 读错误信息。
+
+3xx 原样返回，不自动跟随重定向。这样凭证不会随重定向发到别的主机，307/308 也不会把 POST 重放到新地址。需要跟随时用二期的同主机跟随选项。
 
 ### 快捷命令
 
@@ -331,7 +387,18 @@ stdout 只输出响应体，其他信息都写 stderr，保证 `apix ... | jq` �
 - Linux/macOS：`petctl`，内容为 `exec apix --api pet --env prod --auth ro "$@"`，可执行。
 - Windows：`petctl.cmd`，内容为 `@apix --api pet --env prod --auth ro %*`；同时生成一份 sh 版，供 Git Bash 使用。
 
-脚本里写的是 `apix` 命令名，不写绝对路径，apix 升级不需要重新生成。生成记录存入 `state.yaml`，供 `link ls`/`link rm` 使用。`link rm` 只删除自己记录过的文件。目标文件已存在且不是 apix 生成的，不覆盖，直接报错。
+脚本里写的是 `apix` 命令名，不写绝对路径，apix 升级不需要重新生成。
+
+约束：
+
+- **命名**：`--name` 以及写进脚本的 site、env、auth 名都必须匹配 `^[a-z0-9][a-z0-9-]*$`。这样排除了路径穿越和 sh/cmd 注入。
+- **不固化 `--yes`**：快捷命令不能预带 `--yes`，写保护照常生效。
+- **生成记录**：state.yaml 记录每个快捷命令的路径和内容哈希。
+- **覆盖与删除**：
+  - 只有路径和内容哈希都与 state 记录一致的文件，才视为 apix 生成的。
+  - 目标文件已存在但不是 apix 生成的，不覆盖，直接报错。
+  - `link rm` 时文件内容与记录的哈希不一致，就拒绝删除。
+- **`.cmd` 的限制**：`%*` 展开后整行会再被 cmd 解析一次，参数里的 `&`、`|`、`"` 会出错。在 Windows 上传 JSON 请求体时，用 `-d @file` 或 sh 版快捷命令。帮助文本和 `link` 的输出里都写明这一点。
 
 ## 安全、数据、运维与回滚
 
@@ -339,10 +406,18 @@ stdout 只输出响应体，其他信息都写 stderr，保证 `apix ... | jq` �
   - 只放在 `.env` 或 OS 环境变量里，config.yaml 用 `${env:NAME}` 引用。
   - config.yaml 里出现像 token、password 这样的明文值时，`config check` 给出警告。
   - `.env`、token 缓存和 state.yaml 都以 0600 权限写入。
-- **打码**：`-v`、`--dry-run`、`config show` 输出时，下列内容替换为 `***`：
-  - `Authorization`、`Cookie` 等请求头；
-  - apikey 认证配置的参数名；
-  - 所有由 `${env:}` 展开得到的值。
+- **打码**：按值的来源打码，不按输出位置一一列举。
+  - 以下三类值登记为敏感值：
+    - 认证提供者注入的所有值（不论写在哪个请求头或 query 参数里）；
+    - login 请求的请求体和响应里的 token；
+    - 所有由 `${env:}` 展开得到的值。
+  - 另有一组固定的敏感头：`Authorization`、`Proxy-Authorization`、`Cookie`、`Set-Cookie`。
+  - stderr 上的所有输出、错误消息（包括 Go 的 `url.Error` 里带的完整 URL）、`--dry-run`、`config show`、`site show`、`auth status`，输出前都经过同一个打码器。
+  - `-v` 打印 login 请求时同样打码。
+- **凭证不出主机**：
+  - 原始路径只接受以单个 `/` 开头的路径，拒绝带 scheme 的完整 URL 和以 `//` 开头的路径。
+  - 不自动跟随重定向（见“退出码”一节）。
+  - 因此凭证只会发往当前 env 的 base_url 所在主机。
 - **不读当前目录的 `.env`**：这与 gofer 不同。agent 可能在任意仓库目录下运行 apix，读取当前目录的 `.env` 会让凭证随工作目录变化，容易误用他人的配置（见 Q1）。
 - **TLS**：环境可设置 `insecure: true`（供内部自签证书用），每次请求都在 stderr 给出警告。还可设置 `ca_file`。
 - **数据**：所有数据都在配置目录内。删除 `cache/` 不丢配置，只是需要重新拉取定义、重新登录。
@@ -356,15 +431,17 @@ stdout 只输出响应体，其他信息都写 stderr，保证 `apix ... | jq` �
 | D2 | 两种来源都转换成统一操作模型，下游只认模型 | 新增来源不影响下游；简单定义与 OpenAPI 用法一致 |
 | D3 | 配置目录默认 `~/.config/apix`（`$APIX_CONFIG_DIR` 覆盖），同目录 `.env` 放密钥，OS 环境变量优先 | 用户指定；与 gofer 一致 |
 | D4 | 环境与认证是两个独立维度；选择优先级：单次选项 > state.yaml > `default_*` | 同一身份经常要在多个环境之间切换；分开后组合不必一一写死 |
-| D5 | config.yaml 只由用户编辑，apix 的写入放 state.yaml；`site add` 只在文件末尾追加站点段 | 保留用户的注释和格式 |
+| D5 | apix 不改写 config.yaml；`site add/rm` 只管理自己建的 `sites/<name>.yaml`，选择状态写 state.yaml；简单定义放 `defs/` | 在文件末尾追加会写错层级，并且无法支持 `site rm`；分文件管理才能安全增删 |
 | D6 | 同时支持按操作调用和按原始路径调用 | 前者有校验和补全；后者在定义缺失或写错时兜底 |
 | D7 | 站点名用位置参数，同时接受 `--api <site>` | 位置参数手打短；`--api` 用于快捷命令，与用户最初的设想一致 |
 | D8 | 动态命令只为 argv 中出现的那个站点构建，基于缓存的操作索引 | 启动开销与站点总数无关；不必每次解析完整 spec |
-| D9 | login 认证缓存 token，收到 401 自动重登并只重试一次 | 内部服务最常见的形态；只重试一次，避免失败时循环 |
+| D9 | login 认证缓存 token，键为 site+env+auth 并带指纹；收到 401 自动重登并只重试一次 | 内部服务最常见的形态；按 env 隔离，防止 token 跨环境外泄；只重试一次，避免失败时循环 |
 | D10 | 退出码与“stdout 只输出 body”是对外契约 | agent 和脚本依赖这两点 |
 | D11 | 写保护分两层：环境级 `protect` 和认证级 `allow_methods`；非终端下没有 `--yes` 一律拒绝 | agent 场景防止误改生产环境 |
 | D12 | 快捷命令用 sh 或 `.cmd` 脚本，不用 argv[0] 识别 | Windows 上建 symlink 需要权限，复制二进制则升级后会过期；脚本透明，删除也简单 |
 | D13 | 不读当前目录的 `.env` | 见“安全”一节 |
+| D14 | `.env` 只解析成 map，不写进进程环境，键名区分大小写；查找时先查 OS 环境变量，再查 `.env` 的 map | envutil 会 Setenv 并把键名转大写，会污染子进程环境，`${env:小写名}` 也会查不到 |
+| D15 | 动态操作的选项在运行时注册，不绑定命令结构体（偏离 SR2003）；静态管理命令照常遵守 | 选项来自运行时加载的定义，编译期无法写成结构体字段 |
 
 ## 分期路线
 
@@ -418,12 +495,17 @@ Q1、Q2 会影响命令与安全契约，需要在批准设计时确认；Q3、Q
 
 方案用统一操作模型把 OpenAPI 与简单定义收敛到同一套命令、认证和输出上，环境与认证分开配置，对 agent 提供稳定的退出码和写保护。依赖都在工作区内（gcli/goutil/greq）。按 SR1409 属于低暴露。
 
-下一步：
+评审记录：
 
-1. 一轮合并轴评审。
-2. 用户确认 Q1、Q2 并批准设计。
-3. 写一期实施计划。
+- 第 1 轮合并轴评审（0.1）为 FAIL，开放 CORE_BLOCKING 两条：A1 token 缓存未按 env 隔离，A2 站点写入规则自相矛盾。
+- 0.2 已按评审给出的修法处理 A1、A2，同时吸收了 B1–B9 和 S1–S5。
+- 按 SR1409，评审封顶一轮，所以 0.2 是“未复核修订”。主要变更见修订记录 0.2。
 
-设计批准只授权进入规划，不授权实施。
+批准方式（二选一）：
 
-批准语句示例：“批准 apix 设计 0.1，Q1/Q2 按推荐，开始写一期计划”。
+- 点名接受未复核修订，批准 0.2；
+- 要求对 0.2 再做一次复核。
+
+同时需要确认 Q1、Q2。设计批准只授权进入规划，不授权实施。
+
+批准语句示例：“批准 apix 设计 0.2（接受未复核修订），Q1/Q2 按推荐，开始写一期计划”。
