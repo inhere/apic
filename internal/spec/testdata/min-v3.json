@@ -1,0 +1,40 @@
+{
+  "openapi": "3.0.3",
+  "info": {"title": "Demo API", "version": "1.0"},
+  "servers": [{"url": "http://demo.local/api/v1"}],
+  "paths": {
+    "/pets/{id}": {
+      "get": {
+        "operationId": "getPet",
+        "summary": "Get pet",
+        "parameters": [
+          {"name": "id", "in": "path", "required": true, "schema": {"type": "integer"}},
+          {"name": "verbose", "in": "query", "schema": {"type": "string", "enum": ["yes", "no"]}}
+        ],
+        "responses": {"200": {"description": "OK", "content": {"application/json": {"schema": {"type": "object", "required": ["name"], "properties": {"name": {"type": "string"}}}}}}, "404": {"description": "Not found"}}
+      }
+    },
+    "/pets": {
+      "post": {
+        "operationId": "createPet",
+        "summary": "Create pet",
+        "requestBody": {"required": true, "content": {"application/json": {"schema": {"type": "object", "required": ["name"], "properties": {"name": {"type": "string"}, "age": {"type": "integer"}}}}}},
+        "responses": {"201": {"description": "Created"}}
+      }
+    },
+    "/pets/search": {
+      "get": {
+        "description": "Search pets\nDetails follow.",
+        "parameters": [{"name": "q", "in": "query", "schema": {"type": "string"}}],
+        "responses": {"200": {"description": "OK"}}
+      }
+    },
+    "/pets/form": {
+      "post": {
+        "operationId": "submitPet",
+        "requestBody": {"content": {"application/x-www-form-urlencoded": {"schema": {"type": "object", "required": ["nickname"], "properties": {"nickname": {"type": "string"}}}}}},
+        "responses": {"204": {"description": "Done"}}
+      }
+    }
+  }
+}
