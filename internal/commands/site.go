@@ -177,6 +177,10 @@ func addSite(name string, opt *siteAddOptions) (result error) {
 	}
 	// Publish the already-built cache without overwriting any pre-existing files.
 	if src.Type == "openapi" {
+		// Orphaned caches do not reserve a site name; they are disposable.
+		if err := spec.Remove(d.Dir, name); err != nil {
+			return localError(err)
+		}
 		dest := filepath.Join(d.Dir, "cache", "specs")
 		if err := os.MkdirAll(dest, 0700); err != nil {
 			return localError(err)
@@ -215,30 +219,30 @@ func removeSite(name string) error {
 	if err != nil {
 		return err
 	}
-	site, err := siteLookup(d, name)
-	if err != nil {
-		return err
-	}
-	if filepath.Clean(site.Origin) == filepath.Clean(filepath.Join(d.Dir, "config.yaml")) {
+	site := d.Cfg.Sites[name]
+	if site != nil && filepath.Clean(site.Origin) == filepath.Clean(filepath.Join(d.Dir, "config.yaml")) {
 		return model.Errorf(model.ExitLocal, "site %q is in config.yaml; edit it manually", name)
 	}
 	if !slices.Contains(d.State.ManagedSites, name) {
-		return model.Errorf(model.ExitLocal, "site %q is not managed; edit it manually", name)
-	}
-	if err := os.Remove(filepath.Join(d.Dir, "sites", name+".yaml")); err != nil {
-		return localError(err)
+		return model.Errorf(model.ExitLocal, "site %q is not managed or does not exist; edit it manually", name)
 	}
 	if err := spec.Remove(d.Dir, name); err != nil {
 		return localError(err)
 	}
-	files, err := filepath.Glob(filepath.Join(d.Dir, "cache", "tokens", name+".*"))
-	if err != nil {
+	tokenDir := filepath.Join(d.Dir, "cache", "tokens")
+	files, err := os.ReadDir(tokenDir)
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
 		return localError(err)
 	}
 	for _, file := range files {
-		if err := os.Remove(file); err != nil && !errors.Is(err, os.ErrNotExist) {
-			return localError(err)
+		if strings.HasPrefix(file.Name(), name+".") {
+			if err := os.Remove(filepath.Join(tokenDir, file.Name())); err != nil && !errors.Is(err, os.ErrNotExist) {
+				return localError(err)
+			}
 		}
+	}
+	if err := os.Remove(filepath.Join(d.Dir, "sites", name+".yaml")); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return localError(err)
 	}
 	d.State.ManagedSites = slices.DeleteFunc(d.State.ManagedSites, func(s string) bool { return s == name })
 	return config.SaveState(d.Dir, d.State)
@@ -295,7 +299,82 @@ func writeJSON(value any) error {
 	return writeString(os.Stdout, "\n")
 }
 
+func maskCredential(value string) string {
+	if value == "" {
+		return value
+	}
+	ref := regexp.MustCompile(`\$\{env:[^}]+\}`)
+	matches := ref.FindAllStringIndex(value, -1)
+	if len(matches) == 0 {
+		return "***"
+	}
+	var masked strings.Builder
+	start := 0
+	for _, match := range matches {
+		if match[0] > start {
+			masked.WriteString("***")
+		}
+		masked.WriteString(value[match[0]:match[1]])
+		start = match[1]
+	}
+	if start < len(value) {
+		masked.WriteString("***")
+	}
+	return masked.String()
+}
+
+func maskBody(value any) any {
+	switch v := value.(type) {
+	case string:
+		return maskCredential(v)
+	case map[string]any:
+		copy := make(map[string]any, len(v))
+		for key, child := range v {
+			copy[key] = maskBody(child)
+		}
+		return copy
+	case []any:
+		copy := make([]any, len(v))
+		for i, child := range v {
+			copy[i] = maskBody(child)
+		}
+		return copy
+	default:
+		if value == nil {
+			return nil
+		}
+		return "***"
+	}
+}
+
+func maskedSite(site *model.Site) *model.Site {
+	copy := *site
+	copy.Auths = make(map[string]model.AuthSpec, len(site.Auths))
+	for name, auth := range site.Auths {
+		auth.Token = maskCredential(auth.Token)
+		auth.Username = maskCredential(auth.Username)
+		auth.Password = maskCredential(auth.Password)
+		auth.Value = maskCredential(auth.Value)
+		if auth.Login.Body != nil {
+			auth.Login.Body = maskBody(auth.Login.Body).(map[string]any)
+		}
+		copy.Auths[name] = auth
+	}
+	return &copy
+}
+
 func writeYAML(d *wiring.Deps, value any) error {
+	switch v := value.(type) {
+	case *model.Site:
+		value = maskedSite(v)
+	case *model.Config:
+		copy := *v
+		copy.Sites = make(map[string]*model.Site, len(v.Sites))
+		for name, site := range v.Sites {
+			copy.Sites[name] = maskedSite(site)
+		}
+		value = &copy
+	}
 	data, err := yaml.Marshal(value)
 	if err != nil {
 		return localError(err)

@@ -159,6 +159,46 @@ func TestConfigShowCheckAndUserSite(t *testing.T) {
 	assert.Contains(t, out, "ok")
 }
 
+func TestSiteFailureRecovery(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("APIX_CONFIG_DIR", dir)
+	cacheDir := filepath.Join(dir, "cache", "specs")
+	assert.NoError(t, os.MkdirAll(cacheDir, 0700))
+	assert.NoError(t, os.WriteFile(filepath.Join(cacheDir, "demo.raw"), []byte("stale"), 0600))
+	code, _ := runCommand(t, "site", "add", "demo", "--spec", fixture(t, "min-v2.json"))
+	assert.Eq(t, 0, code)
+	blocker := filepath.Join(dir, "cache", "tokens", "demo.blocked")
+	assert.NoError(t, os.MkdirAll(blocker, 0700))
+	assert.NoError(t, os.WriteFile(filepath.Join(blocker, "child"), []byte("x"), 0600))
+	code, _ = runCommand(t, "site", "rm", "demo")
+	assert.Eq(t, 1, code)
+	_, err := os.Stat(filepath.Join(dir, "sites", "demo.yaml"))
+	assert.NoError(t, err)
+	assert.NoError(t, os.Remove(filepath.Join(blocker, "child")))
+	code, _ = runCommand(t, "site", "rm", "demo")
+	assert.Eq(t, 0, code)
+}
+
+func TestConfigPlainCredentials(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("APIX_CONFIG_DIR", dir)
+	cfg := "version: 1\nsites:\n  demo:\n    source: {type: openapi, url: 'https://example.test'}\n    auths:\n      demo: {type: basic, username: sample-user, password: sample-password, token: ab, value: sample-value, login: {body: {pin: 123, secret: sample-body}}}\n"
+	assert.NoError(t, os.WriteFile(filepath.Join(dir, "config.yaml"), []byte(cfg), 0600))
+	for _, args := range [][]string{{"site", "show", "demo"}, {"config", "show"}} {
+		t.Run(strings.Join(args, "-"), func(t *testing.T) {
+			code, out := runCommand(t, args...)
+			assert.Eq(t, 0, code)
+			for _, secret := range []string{"sample-user", "sample-password", "sample-value", "sample-body", "123", "token: ab"} {
+				assert.False(t, strings.Contains(out, secret))
+			}
+			assert.Contains(t, out, "***")
+		})
+	}
+	code, out := runCommand(t, "config", "check")
+	assert.Eq(t, 0, code)
+	assert.Contains(t, out, "plaintext credential")
+}
+
 func TestSiteRefreshStaticAuth(t *testing.T) {
 	for _, tc := range []struct {
 		name, auth, header, value string
