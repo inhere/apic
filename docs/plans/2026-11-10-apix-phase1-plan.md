@@ -507,3 +507,7 @@
 - 2026-11-10 T01（076783e）、T02（6bbc623）、T03（138801c）由 suga 实施后合并；T02、T03 第一次运行都因 go.mod 不在任务书范围内停下，补充授权后续跑完成。
 - 2026-11-10 T06（9301799）由 sonnet 子 agent 实施，在主机提交并合并。实现在计划签名基础上的扩展：`CheckProtect` 多一个 `prompt` 参数；`Call` 增加 `Env`、`Auth`、`Client`、`Stderr`、`Prompt` 字段；`Input` 增加 `Stdin` 字段。这些都属于 owner 内的扩展，验收不变。
 - 2026-11-10 Operational Discovery：T07 的 `auth`、`use` 命令（internal/commands）改到 T05 之后，随 T08 一起做，避免与 T05 同时修改 commands 和 wiring。T07 本次只做 internal/auth，验收项不变，归入 T08 的验证。
+- 2026-11-10 T07 auth 部分（4ca8ae1）由 sonnet 子 agent 实施，在主机提交并合并。
+- 2026-11-10 T04（cb48480）由 suga 实施。首轮因 web_fetch 触发 suga 注入防护误报而中断，已报给 suga 会话；续做时禁止联网。
+- 2026-11-10 Corrective（T04 验证）：petstore 公开样例的冒烟测试，改为默认跳过的 `TestRealSpec`（环境变量 `APIX_REAL_SPEC_DIR`），对两份真实 spec 做断言。结果：30 个和 9 个操作，命令名如 `back-cfg-get`、`inner-order-create`。验证范围比原来更贴近实际，验收不变。
+- 2026-11-10 派发：T05 交给 suga gpt-6.1-terra（job-20261110-234928-faac8686）。
