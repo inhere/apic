@@ -65,6 +65,12 @@ func (SimpleLoader) Load(ctx context.Context, src model.Source, dir string) (*mo
 	if err := yaml.Unmarshal(data, &doc); err != nil {
 		return nil, model.Errorf(model.ExitLocal, "%s: %v", file, err)
 	}
+	var keys struct {
+		Operations map[string]map[string]any `yaml:"operations"`
+	}
+	if err := yaml.Unmarshal(data, &keys); err != nil {
+		return nil, model.Errorf(model.ExitLocal, "%s: %v", file, err)
+	}
 	index := &model.Index{}
 	names := make([]string, 0, len(doc.Operations))
 	for name := range doc.Operations {
@@ -83,12 +89,14 @@ func (SimpleLoader) Load(ctx context.Context, src model.Source, dir string) (*mo
 		}{{"GET", raw.Get}, {"POST", raw.Post}, {"PUT", raw.Put}, {"PATCH", raw.Patch}, {"DELETE", raw.Delete}, {"HEAD", raw.Head}}
 		count := 0
 		for _, method := range methods {
-			if method.path != nil {
-				op.Method, op.Path = method.name, *method.path
+			if _, exists := keys.Operations[name][strings.ToLower(method.name)]; exists {
 				count++
+				if method.path != nil {
+					op.Method, op.Path = method.name, *method.path
+				}
 			}
 		}
-		if count != 1 {
+		if count != 1 || op.Method == "" {
 			return nil, model.Errorf(model.ExitLocal, "%s: operation %q must have exactly one method", file, name)
 		}
 		for _, p := range raw.Params {

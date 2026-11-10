@@ -49,6 +49,8 @@ func TestSimpleVariants(t *testing.T) {
 		{"no-method", "operations:\n  demo: {summary: test}\n", true},
 		{"two-methods", "operations:\n  demo: {get: /demo, post: /demo}\n", true},
 		{"bad-yaml", "operations: [", true},
+		{"null-extra-method", "operations:\n  demo: {get: /demo, post: null}\n", true},
+		{"null-method", "operations:\n  demo: {get: null}\n", true},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
