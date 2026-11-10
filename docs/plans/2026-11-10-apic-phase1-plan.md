@@ -522,3 +522,15 @@
 - 2026-11-11 容器中 `git init` 留下 `core.filemode=true`，导致容器内看到权限位差异；已改为 false，与 Windows 主机一致。
 - 2026-11-11 T09（e70e95d）由 suga 实施后合并。job 在全部提交后因 900 秒无输出被判 stall；gofer 自动续跑（job-20261111-010031-5fccdf5e）的进程占用了已清理的 worktree 目录，已报给 gofer 会话。续跑只做了验证，未改动 main。
 - 2026-11-11 更名：apix → apic（设计 0.4 / 计划 0.4）。仓库目录改为 `inhere-tools/apic`，远端仓库改为 `inhere/apic`。
+- 2026-11-11 T10 验收（产物在 `<WP>/tmp/apic-accept/`）：
+  - A1 通过：两份真实 Swagger 2.0 注册成功（30 个和 9 个操作），`ops`/`desc` 正常，dry-run 拼出的 URL 正确；没有 host 的那份不加 `--base-url` 时退出 1。
+  - A2 通过：Jenkins 简单定义对本地模拟服务完成 basic 认证调用，`-i`/`-v`/`site show`/`config show` 均已打码。验收中发现展开后的用户名也被登记为敏感值，导致 URL 路径被打码，已修复（d05fd91，只登记凭证字段；Corrective）。
+  - A3 通过：`go test ./...` 全部通过。
+  - A4 通过：Windows 主机上 `.cmd` 快捷命令调用成功，覆盖他人文件、删除被改动文件都被拒绝（退出 1）；容器内 sh 版快捷命令调用成功，带空格的参数原样透传。
+  - A5 通过：vet、gofmt、TestLayering 通过，最大文件 635 行；staticcheck 由 CI 执行。
+- 2026-11-11 用户要求的 README（中英两份）、LICENSE、Makefile、CI 已完成。
+- 2026-11-11 完成总结：apic 一期按计划 0.4 完成，T01–T10 全部合并，验收 A1–A5 通过。
+  - 实施方式：suga（gpt-6-sol / gpt-6.1-terra）完成 T01–T05、T09，sonnet 子 agent 完成 T06–T08，主会话负责审查、合并和验收。
+  - 自主决策：站点名规则统一、`--auth-for-spec` 本期不做、T07 命令移入 T08、petstore 改为真实 spec 测试、只登记凭证字段为敏感值。
+  - 剩余：推送到 `inhere/apic`（外部动作，待用户确认）；`site.go` 配置打码逻辑的整理；gcli 输出与退出码问题（my-tools-kb4d）；二、三期功能。
+
