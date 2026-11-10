@@ -174,33 +174,37 @@ func TestCacheSimpleNoCache(t *testing.T) {
 	assert.True(t, errors.Is(err, os.ErrNotExist))
 }
 
-func TestOpenAPIRealReadOnly(t *testing.T) {
-	paths := []struct {
-		name, env    string
-		count        int
-		emptyBaseURL bool
-	}{
-		{"big", "APIX_REAL_SPEC_BIG", 30, false},
-		{"small", "APIX_REAL_SPEC_SMALL", 9, true},
+func TestRealSpec(t *testing.T) {
+	dir := os.Getenv("APIX_REAL_SPEC_DIR")
+	if dir == "" {
+		t.Skip("APIX_REAL_SPEC_DIR is not set")
 	}
-	for _, tc := range paths {
-		if os.Getenv(tc.env) == "" {
-			continue
-		}
-		t.Run(tc.name, func(t *testing.T) {
-			t.Setenv("APIX_CONFIG_DIR", t.TempDir())
-			idx, err := (spec.OpenAPILoader{}).Load(context.Background(), model.Source{File: os.Getenv(tc.env)}, t.TempDir())
+	t.Setenv("APIX_CONFIG_DIR", t.TempDir())
+	for _, tc := range []struct {
+		file  string
+		count int
+		big   bool
+	}{
+		{"big-v2.json", 30, true},
+		{"small-v2.json", 9, false},
+	} {
+		t.Run(tc.file, func(t *testing.T) {
+			idx, err := (spec.OpenAPILoader{}).Load(context.Background(), model.Source{File: filepath.Join(dir, tc.file)}, t.TempDir())
 			assert.Require(t, assert.NoError(t, err))
 			assert.Eq(t, tc.count, len(idx.Ops))
-			if tc.emptyBaseURL {
+			if tc.big {
+				assert.True(t, strings.HasPrefix(idx.DefaultBaseURL, "http://"))
+			} else {
 				assert.Eq(t, "", idx.DefaultBaseURL)
 			}
 			var names []string
 			for _, op := range idx.Ops {
-				if len(names) == 10 {
-					break
+				if tc.big {
+					assert.True(t, !strings.HasPrefix(op.Name, "post-"))
 				}
-				names = append(names, op.Name)
+				if len(names) < 10 {
+					names = append(names, op.Name)
+				}
 			}
 			t.Logf("first 10 operations: %v", names)
 		})
