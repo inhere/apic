@@ -87,3 +87,75 @@ func TestPick(t *testing.T) {
 		assert.Eq(t, 7, ExitPostProcess)
 	})
 }
+
+func TestPickProjection(t *testing.T) {
+	pick := func(t *testing.T, body, path string) (string, error) {
+		t.Helper()
+		return pickJSON(t, body, path)
+	}
+	codeOf := func(err error) int { return err.(*CodedError).Code() }
+
+	t.Run("root object keeps given order and null for missing", func(t *testing.T) {
+		got, err := pick(t, `{"a":1,"b":2,"c":3}`, "c,x,a")
+		assert.NoError(t, err)
+		assert.Eq(t, `{"c":3,"x":null,"a":1}`, got)
+	})
+	t.Run("under star", func(t *testing.T) {
+		got, err := pick(t, `{"data":{"list":[{"id":1,"name":"a","z":0},{"name":"b"}]}}`, "data.list.*.id,name")
+		assert.NoError(t, err)
+		assert.Eq(t, `[{"id":1,"name":"a"},{"id":null,"name":"b"}]`, got)
+	})
+	t.Run("literal key with comma wins", func(t *testing.T) {
+		got, err := pick(t, `{"a,b":"lit","a":1,"b":2}`, "a,b")
+		assert.NoError(t, err)
+		assert.Eq(t, `"lit"`, got)
+	})
+	t.Run("middle segment comma is a plain key", func(t *testing.T) {
+		got, err := pick(t, `{"a,b":{"c":5}}`, "a,b.c")
+		assert.NoError(t, err)
+		assert.Eq(t, `5`, got)
+		_, err = pick(t, `{"a":{"c":5}}`, "a,b.c")
+		assert.Err(t, err)
+		assert.Eq(t, ExitPostProcess, codeOf(err))
+	})
+	t.Run("empty or duplicate key", func(t *testing.T) {
+		for _, path := range []string{"a,,b", "a,", ",a", "a,b,a"} {
+			_, err := pick(t, `{"a":1,"b":2}`, path)
+			assert.Err(t, err, path)
+			assert.Eq(t, ExitPostProcess, codeOf(err), path)
+			assert.Contains(t, err.Error(), "empty or duplicate key")
+		}
+	})
+	t.Run("non-object without star", func(t *testing.T) {
+		for _, body := range []string{`[{"a":1}]`, `{"x":5}`} {
+			path := "a,b"
+			if body == `{"x":5}` {
+				path = "x.a,b"
+			}
+			_, err := pick(t, body, path)
+			assert.Err(t, err, body)
+			assert.Eq(t, ExitPostProcess, codeOf(err))
+			assert.Contains(t, err.Error(), "needs an object")
+		}
+	})
+	t.Run("non-object under star is null", func(t *testing.T) {
+		got, err := pick(t, `[{"a":1,"b":2},5,"s"]`, "*.a,b")
+		assert.NoError(t, err)
+		assert.Eq(t, `[{"a":1,"b":2},null,null]`, got)
+	})
+	t.Run("star and digits are literal keys", func(t *testing.T) {
+		got, err := pick(t, `{"*":1,"0":2,"a":3}`, "*,0,a")
+		assert.NoError(t, err)
+		assert.Eq(t, `{"*":1,"0":2,"a":3}`, got)
+	})
+	t.Run("star over object values then project", func(t *testing.T) {
+		got, err := pick(t, `{"u1":{"n":1,"m":2},"u2":{"n":3}}`, "*.n,m")
+		assert.NoError(t, err)
+		assert.Eq(t, `[{"n":1,"m":2},{"n":3,"m":null}]`, got)
+	})
+	t.Run("parse accepts commas", func(t *testing.T) {
+		p, err := ParsePick("a.b,c")
+		assert.NoError(t, err)
+		assert.Eq(t, "a.b,c", p.String())
+	})
+}

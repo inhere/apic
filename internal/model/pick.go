@@ -51,11 +51,42 @@ func pickFail(prefix []string, seg, why string) error {
 	return Errorf(ExitPostProcess, "--pick segment %q %s (after %s)", seg, why, at)
 }
 
+// projectPick handles a last segment containing commas. An object with a
+// literal key of the same name wins (compatibility); otherwise the segment is a
+// comma separated key list and the result keeps that order, missing keys as nil.
+func projectPick(v any, seg string) (any, error) {
+	obj, isObj := v.(Object)
+	if isObj {
+		if val, ok := obj.Vals[seg]; ok {
+			return val, nil
+		}
+	}
+	keys := strings.Split(seg, ",")
+	seen := make(map[string]bool, len(keys))
+	for _, k := range keys {
+		if k == "" || seen[k] {
+			return nil, Errorf(ExitPostProcess, "--pick projection %q has an empty or duplicate key", seg)
+		}
+		seen[k] = true
+	}
+	if !isObj {
+		return nil, Errorf(ExitPostProcess, "--pick projection %q needs an object; add .* before it for arrays", seg)
+	}
+	out := Object{Keys: keys, Vals: make(map[string]any, len(keys))}
+	for _, k := range keys {
+		out.Vals[k] = obj.Vals[k] // absent keys stay nil
+	}
+	return out, nil
+}
+
 func applyPick(v any, segs, prefix []string) (any, error) {
 	if len(segs) == 0 {
 		return v, nil
 	}
 	seg := segs[0]
+	if len(segs) == 1 && strings.Contains(seg, ",") {
+		return projectPick(v, seg)
+	}
 	next := append(append([]string(nil), prefix...), seg)
 	switch t := v.(type) {
 	case Object:

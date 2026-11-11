@@ -373,6 +373,17 @@ func TestExecLoginFingerprintReplay(t *testing.T) {
 	assert.True(t, si.Cacheable)
 }
 
+func TestExecTokenPathProjection(t *testing.T) {
+	f := newExecFixture(t)
+	// A projection (comma) yields an object, which is not a string token.
+	p := f.provider(t, f.jsonSpec(`{"t":"jt-12345","u":"other"}`, "t,u", "", ""))
+	_, err := apply(t, p)
+	assert.Err(t, err)
+	assert.Eq(t, model.ExitLocal, code(err))
+	assert.Contains(t, err.Error(), "not a single-line string")
+	assert.NotContains(t, err.Error(), "jt-12345")
+}
+
 func TestExecEnvironment(t *testing.T) {
 	f := newExecFixture(t)
 	t.Setenv("STUB_PARENT", "from-parent")
