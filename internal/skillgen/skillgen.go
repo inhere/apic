@@ -114,7 +114,8 @@ func writeUsage(b *strings.Builder, site string) {
 	fmt.Fprintf(b, "- Raw path: `apic %s -X GET /path`.\n", site)
 	b.WriteString("- Filter the response: `--pick a.b` (post-process, see `apic --help`).\n")
 	b.WriteString("- Preview without sending: `--dry-run`.\n")
-	b.WriteString("- Output format: `-o json`.\n\n")
+	b.WriteString("- Output format: `-o json`.\n")
+	b.WriteString("- `-F name=@path` and `-d @file` read and send a local file: use them only with paths the user explicitly gave. `-f` values are always text.\n\n")
 	b.WriteString("stdout contains only the response body; diagnostics go to stderr.\n\n")
 	b.WriteString("## Exit codes\n\n| Code | Meaning |\n|---|---|\n")
 	b.WriteString("| 0 | HTTP 2xx or 3xx |\n| 1 | local error |\n| 2 | usage error |\n| 3 | network error |\n")
@@ -191,12 +192,15 @@ func writeOps(b *strings.Builder, in Input, site string, counts map[string]int, 
 		}
 		var req []string
 		for _, p := range op.Params {
-			if p.Required {
+			if p.Required && !p.Hidden {
 				req = append(req, Sanitize(p.Name, fieldMax))
 			}
 		}
 		if len(req) > 0 {
 			line += " (required: " + strings.Join(req, ", ") + ")"
+		}
+		if op.Body != nil && op.Body.Type == "multipart" {
+			line += " (multipart: use -F name=@path)"
 		}
 		b.WriteString(line + "\n")
 	}

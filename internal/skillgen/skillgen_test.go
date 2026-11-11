@@ -200,3 +200,24 @@ func asCoded(err error, out **model.CodedError) bool {
 	*out = ce
 	return ok
 }
+
+func TestSkillMultipartHints(t *testing.T) {
+	idx := &model.Index{Ops: []model.Operation{
+		{Name: "upload", Method: "POST", Path: "/up", Body: &model.BodySpec{Type: "multipart"}, Params: []model.Param{{Name: "dbg", Required: true, Hidden: true}, {Name: "id", Required: true}}},
+		{Name: "make", Method: "POST", Path: "/make", Body: &model.BodySpec{Type: "json"}},
+	}}
+	data, err := skillgen.Render(skillgen.Input{Site: "pet", Index: idx, Cfg: baseSite(), Name: "apic-pet", MaxOps: 60})
+	assert.Require(t, assert.NoError(t, err))
+	text := string(data)
+	t.Run("usage bullet", func(t *testing.T) {
+		assert.Contains(t, text, "`-F name=@path` and `-d @file` read and send a local file")
+		assert.Contains(t, text, "`-f` values are always text")
+	})
+	t.Run("multipart suffix only on multipart ops", func(t *testing.T) {
+		assert.Contains(t, text, "upload POST /up (required: id) (multipart: use -F name=@path)")
+		assert.NotContains(t, text, "make POST /make (multipart")
+	})
+	t.Run("hidden param not listed as required", func(t *testing.T) {
+		assert.NotContains(t, text, "dbg")
+	})
+}

@@ -24,6 +24,7 @@ type globalOpts struct {
 type siteOpts struct {
 	Method, Data  string
 	Fields, Param []string
+	Forms         []string
 }
 
 // reservedOptNames are option names a generated parameter option must not use.
@@ -31,7 +32,7 @@ var reservedOptNames = map[string]bool{
 	"env": true, "auth": true, "output": true, "include": true, "verbose": true,
 	"dry-run": true, "yes": true, "timeout": true, "header": true, "pick": true,
 	"help": true, "version": true, "gen-completion": true, "in-completion": true, "api": true,
-	"X": true, "d": true, "f": true, "p": true, "o": true, "i": true, "v": true, "H": true, "h": true, "V": true,
+	"X": true, "d": true, "f": true, "F": true, "p": true, "o": true, "i": true, "v": true, "H": true, "h": true, "V": true,
 }
 
 // bind registers the global options on fs.
@@ -60,6 +61,7 @@ func (s *siteOpts) bind(fs *gflag.Flags) {
 	fs.StrVar(&s.Method, &gflag.CliOpt{Name: "X", Desc: "HTTP method for a raw path call (default GET)"})
 	fs.StrVar(&s.Data, &gflag.CliOpt{Name: "d", Desc: "Request body: @file, - for stdin, or literal"})
 	gflag.BindVar(fs, &s.Fields, &gflag.CliOpt{Name: "f", Desc: "Body field k=v or k:=json (repeatable)"})
+	gflag.BindVar(fs, &s.Forms, &gflag.CliOpt{Name: "F", Desc: "Multipart field name=value or name=@file[;type=..][;filename=..] (repeatable)"})
 	gflag.BindVar(fs, &s.Param, &gflag.CliOpt{Name: "p", Desc: "Parameter name=value or <in>.name=value (repeatable)"})
 }
 

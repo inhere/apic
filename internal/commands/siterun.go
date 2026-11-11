@@ -41,6 +41,7 @@ func (sc *siteContext) run(op *model.Operation, in request.Input) error {
 		return err
 	}
 	in.P, in.Data, in.Fields, in.Headers = so.Param, so.Data, so.Fields, g.Headers
+	in.Forms = so.Forms
 	flags := wiring.CallFlags{DryRun: g.DryRun, Yes: g.Yes, TTY: interactive(), Timeout: timeout, Stderr: os.Stderr, Prompt: promptYesNo}
 	if g.Verbose {
 		flags.Verbose = os.Stderr

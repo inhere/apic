@@ -75,7 +75,7 @@ func (sc *siteContext) bindCompletionOpts(fs *gflag.Flags) {
 func (sc *siteContext) rawCall(path string) error {
 	so := sc.so
 	if path == "" {
-		if so.Method != "" || so.Data != "" || len(so.Fields) > 0 || len(so.Param) > 0 {
+		if so.Method != "" || so.Data != "" || len(so.Fields) > 0 || len(so.Forms) > 0 || len(so.Param) > 0 {
 			return model.Errorf(model.ExitUsage, "a raw call needs a path starting with '/'")
 		}
 		return sc.listOperations()
@@ -117,7 +117,8 @@ func paramOptions(op *model.Operation) []model.Param {
 	}
 	var out []model.Param
 	for _, p := range op.Params {
-		if count[p.Name] > 1 || reservedOptNames[p.Name] || !optNamePattern.MatchString(p.Name) {
+		// Hidden params (overlay) get no option; -p rejects them in the request layer.
+		if p.Hidden || count[p.Name] > 1 || reservedOptNames[p.Name] || !optNamePattern.MatchString(p.Name) {
 			continue
 		}
 		out = append(out, p)
