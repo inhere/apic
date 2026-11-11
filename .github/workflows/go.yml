@@ -19,7 +19,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        go_version: [1.25, stable]
+        go_version: [oldstable, stable] # the two latest Go releases
         os: [ubuntu-latest, windows-latest]
 
     steps:
