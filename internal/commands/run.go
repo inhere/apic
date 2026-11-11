@@ -28,6 +28,9 @@ func Run(info BuildInfo, args []string) int {
 	}
 	g := &globalOpts{}
 	spec := globalSpec()
+	if isCompletionRun(args) {
+		return runCompletion(info, g, spec, args)
+	}
 	d, loadErr := wiring.Load()
 	if loadErr != nil {
 		return runWithoutConfig(info, g, spec, args, loadErr)
@@ -58,6 +61,51 @@ func Run(info BuildInfo, args []string) int {
 		app.Add(siteDynamicCommand(sc))
 	}
 	return app.Run(rewritten)
+}
+
+// runCompletion answers a runtime completion request. It never prints
+// warnings or errors, never touches the network and never builds an
+// authentication: the site index comes from the cache only, and a site that is
+// not targeted only gets a placeholder command.
+func runCompletion(info BuildInfo, g *globalOpts, spec GlobalSpec, args []string) int {
+	d, err := wiring.Load()
+	var sites []string
+	if err == nil {
+		for name := range d.Cfg.Sites {
+			sites = append(sites, name)
+		}
+		sort.Strings(sites)
+	}
+	plan := PrescanCompletion(args, spec, sites)
+	switch {
+	case plan.silent:
+		return 0
+	case plan.handled:
+		for _, line := range plan.out {
+			if err := writeString(os.Stdout, line+"\n"); err != nil {
+				return 0
+			}
+		}
+		return 0
+	}
+	app := newApp(info, g, nil)
+	switch {
+	case d == nil:
+	case plan.site != "":
+		sc := &siteContext{d: d, name: plan.site, site: d.Cfg.Sites[plan.site], g: g, so: &siteOpts{}, completion: true}
+		idx, err := loadIndexCached(d, plan.site, sc.site)
+		if err != nil || idx == nil {
+			idx = &model.Index{}
+		}
+		sc.idx = idx
+		app.Add(siteDynamicCommand(sc))
+	default:
+		for _, name := range sites {
+			app.Add(placeholderCommand(name))
+		}
+	}
+	app.Run(plan.args)
+	return 0
 }
 
 // runWithoutConfig handles a configuration that failed to load. Management

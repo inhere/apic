@@ -85,6 +85,13 @@ func loadIndex(d *wiring.Deps, name string, site *model.Site, refresh bool) (*mo
 	return index, warnings, nil
 }
 
+// loadIndexCached reads the site index from the local cache only, however old
+// it is: no request is made and no authentication is built.
+func loadIndexCached(d *wiring.Deps, name string, site *model.Site) (*model.Index, error) {
+	index, _, err := spec.Index(context.Background(), name, site.Source, d.Dir, spec.IndexOptions{CacheOnly: true})
+	return index, err
+}
+
 func printWarnings(d *wiring.Deps, warnings []string) error {
 	for _, warning := range warnings {
 		if err := writeString(os.Stderr, "warning: "+d.Redactor.Redact(warning)+"\n"); err != nil {

@@ -19,6 +19,7 @@ type linkOptions struct{ name, env, auth, dir string }
 
 func linkCommand(g *globalOpts) *gcli.Command {
 	opt := &linkOptions{}
+	lsOpt := &struct{ completion string }{}
 	return &gcli.Command{Name: "link", Desc: "Generate, list or remove shortcut scripts (.cmd JSON arguments: use -d @file)",
 		Config: func(c *gcli.Command) {
 			c.AddArg("site", "Site name", true)
@@ -34,7 +35,9 @@ func linkCommand(g *globalOpts) *gcli.Command {
 			return createLink(c.Arg("site").String(), opt)
 		},
 		Subs: []*gcli.Command{
-			{Name: "ls", Desc: "List generated shortcuts", Func: func(*gcli.Command, []string) error { return listLinks() }},
+			{Name: "ls", Desc: "List generated shortcuts", Config: func(c *gcli.Command) {
+				c.StrOpt(&lsOpt.completion, "completion", "", "", "Print the completion script of all shortcuts for a shell: bash, zsh or pwsh")
+			}, Func: func(*gcli.Command, []string) error { return listLinks(lsOpt.completion) }},
 			{Name: "rm", Desc: "Remove a generated shortcut", Config: func(c *gcli.Command) {
 				c.AddArg("name", "Shortcut name", true)
 			}, Func: func(c *gcli.Command, _ []string) error { return removeLink(c.Arg("name").String()) }},
@@ -121,15 +124,30 @@ func createLink(site string, opt *linkOptions) error {
 		}
 	}
 	if runtime.GOOS == "windows" {
-		return writeString(os.Stdout, ".cmd 版传 JSON 参数请用 -d @file\n")
+		if err := writeString(os.Stdout, ".cmd 版传 JSON 参数请用 -d @file\n"); err != nil {
+			return err
+		}
 	}
-	return nil
+	return hintCompletionRefresh()
 }
 
-func listLinks() error {
+// hintCompletionRefresh tells the user that shortcut completion is generated
+// from the current shortcuts and has to be loaded again after a change.
+func hintCompletionRefresh() error {
+	return writeString(os.Stderr, "run `eval \"$(apic link ls --completion bash)\"` again to refresh shortcut completion\n")
+}
+
+func listLinks(completion string) error {
 	d, err := wiring.Load()
 	if err != nil {
 		return err
+	}
+	if completion != "" {
+		script, err := link.CompletionScript(completion, linkRecords(d.State))
+		if err != nil {
+			return err
+		}
+		return writeString(os.Stdout, script)
 	}
 	names := make([]string, 0, len(d.State.Links))
 	for name := range d.State.Links {
@@ -154,5 +172,8 @@ func removeLink(name string) error {
 	if err := link.Remove(name, &records); err != nil {
 		return err
 	}
-	return saveLinks(d, records)
+	if err := saveLinks(d, records); err != nil {
+		return err
+	}
+	return hintCompletionRefresh()
 }

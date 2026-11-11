@@ -2,10 +2,13 @@ package commands
 
 import (
 	"fmt"
+	"maps"
 	"regexp"
+	"slices"
 	"strings"
 
 	"github.com/gookit/gcli/v3"
+	"github.com/gookit/gcli/v3/gflag"
 	"github.com/inhere/apic/internal/model"
 	"github.com/inhere/apic/internal/request"
 	"github.com/inhere/apic/internal/wiring"
@@ -20,6 +23,9 @@ type siteContext struct {
 	idx  *model.Index
 	g    *globalOpts
 	so   *siteOpts
+	// completion registers the global and site options on each command itself,
+	// because gcli's shared options are not visible to completion.
+	completion bool
 }
 
 // siteDynamicCommand builds the <site> command: a raw path call by itself and
@@ -30,6 +36,10 @@ func siteDynamicCommand(sc *siteContext) *gcli.Command {
 		Desc: fmt.Sprintf("Call site %s by operation name or raw path", sc.name),
 		Config: func(c *gcli.Command) {
 			c.AddArg("path", "Raw request path starting with a single '/'", false)
+			if sc.completion {
+				sc.bindCompletionOpts(&c.Flags)
+				return
+			}
 			sc.g.bind(c.SharedOpts())
 			sc.so.bind(c.SharedOpts())
 		},
@@ -39,6 +49,26 @@ func siteDynamicCommand(sc *siteContext) *gcli.Command {
 		c.Add(operationCommand(sc, &sc.idx.Ops[i]))
 	}
 	return c
+}
+
+// placeholderCommand is a site command with only a name and a description, used
+// to complete site names without reading any index.
+func placeholderCommand(name string) *gcli.Command {
+	return &gcli.Command{
+		Name: name,
+		Desc: fmt.Sprintf("Call site %s by operation name or raw path", name),
+		Func: func(*gcli.Command, []string) error { return nil },
+	}
+}
+
+// bindCompletionOpts registers the global and site options directly on fs and
+// gives --env, --auth and -o their candidate values.
+func (sc *siteContext) bindCompletionOpts(fs *gflag.Flags) {
+	sc.g.bind(fs)
+	sc.so.bind(fs)
+	fs.Opt("env").Choices = slices.Sorted(maps.Keys(sc.site.Envs))
+	fs.Opt("auth").Choices = slices.Sorted(maps.Keys(sc.site.Auths))
+	fs.Opt("output").Choices = []string{"auto", "json", "raw", "yaml", "table"}
 }
 
 // rawCall handles `apic <site> [-X METHOD] <path>`.
@@ -118,6 +148,12 @@ func operationCommand(sc *siteContext, op *model.Operation) *gcli.Command {
 				pf := &paramFlag{}
 				flags[p.Name] = pf
 				c.VarOpt(pf, p.Name, "", paramDesc(p))
+				if sc.completion {
+					c.Opt(p.Name).Choices = p.Enum
+				}
+			}
+			if sc.completion {
+				sc.bindCompletionOpts(&c.Flags)
 			}
 		},
 		Func: func(c *gcli.Command, _ []string) error {

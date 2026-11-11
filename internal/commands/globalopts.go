@@ -51,6 +51,8 @@ func (g *globalOpts) bind(fs *gflag.Flags) {
 // bindOutput registers only -o on a static command, sharing the global field.
 func (g *globalOpts) bindOutput(fs *gflag.Flags) {
 	fs.StrOpt(&g.Output, "output", "o", "", "Output format")
+	// Static commands only list operations or descriptions, which are JSON only.
+	fs.Opt("output").Choices = []string{"json"}
 }
 
 // bind registers the site-owned options on fs.
