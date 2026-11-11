@@ -11,7 +11,7 @@ import (
 func shQuote(s string) string { return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'" }
 
 // Curl renders a single-line curl command; everything is redacted before rendering.
-func Curl(req *http.Request, body []byte, env model.Env, r *model.Redactor) string {
+func Curl(req *http.Request, body []byte, parts []Part, env model.Env, r *model.Redactor) string {
 	var b strings.Builder
 	b.WriteString("curl -X " + req.Method)
 	if env.Insecure {
@@ -27,13 +27,29 @@ func Curl(req *http.Request, body []byte, env model.Env, r *model.Redactor) stri
 	}
 	sort.Strings(names)
 	for _, k := range names {
+		if len(parts) > 0 && strings.EqualFold(k, "Content-Type") {
+			continue // curl generates the boundary itself
+		}
 		for _, v := range hdr[k] {
 			b.WriteString(" -H " + shQuote(k+": "+v))
 		}
 	}
-	if len(body) > 0 {
+	for _, p := range parts {
+		if p.File == "" {
+			b.WriteString(" --form-string " + shQuote(r.Redact(p.Name)+"="+r.Redact(p.Value)))
+			continue
+		}
+		path := formQuote(r.Redact(p.File))
+		b.WriteString(" -F " + shQuote(r.Redact(p.Name)+`=@"`+path+`";type=`+p.Type+`;filename="`+r.Redact(p.Filename)+`"`))
+	}
+	if len(parts) == 0 && len(body) > 0 {
 		b.WriteString(" --data-raw " + shQuote(r.Redact(string(body))))
 	}
 	b.WriteString(" " + shQuote(r.Redact(req.URL.String())))
 	return b.String()
+}
+
+// formQuote escapes a path for curl's quoted -F form.
+func formQuote(s string) string {
+	return strings.NewReplacer(`\`, `\\`, `"`, `\"`).Replace(s)
 }

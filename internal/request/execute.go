@@ -69,6 +69,23 @@ func Execute(ctx context.Context, c Call) (*Response, error) {
 			return nil, err
 		}
 	}
+	if p := c.Prepared; len(p.Parts) > 0 {
+		if c.DryRun {
+			if err := CheckFiles(p.Parts); err != nil {
+				return nil, c.wrapErr(err)
+			}
+		} else if p.Body == nil {
+			body, ctype, err := Assemble(p.Parts)
+			if err != nil {
+				return nil, c.wrapErr(err)
+			}
+			p.Body = body
+			if p.Header == nil {
+				p.Header = http.Header{}
+			}
+			p.Header.Set("Content-Type", ctype)
+		}
+	}
 	if c.Timeout > 0 {
 		var cancel context.CancelFunc
 		ctx, cancel = context.WithTimeout(ctx, c.Timeout)
@@ -84,7 +101,7 @@ func Execute(ctx context.Context, c Call) (*Response, error) {
 		}
 	}
 	if c.DryRun {
-		return &Response{Request: req, Curl: Curl(req, c.Prepared.Body, c.Env, c.Redactor)}, nil
+		return &Response{Request: req, Curl: Curl(req, c.Prepared.Body, c.Prepared.Parts, c.Env, c.Redactor)}, nil
 	}
 	client := c.Client
 	if client == nil {
@@ -130,6 +147,15 @@ func (c *Call) send(client *http.Client, req *http.Request) (*Response, error) {
 		for _, k := range names {
 			for _, v := range hdr[k] {
 				fmt.Fprintf(c.Verbose, "> %s: %s\n", k, v)
+			}
+		}
+	}
+	if c.Verbose != nil {
+		for _, p := range c.Prepared.Parts {
+			if p.File != "" {
+				fmt.Fprintf(c.Verbose, "> part %s: file=%s type=%s size=%d\n", c.Redactor.Redact(p.Name), c.Redactor.Redact(p.Filename), p.Type, p.Size)
+			} else {
+				fmt.Fprintf(c.Verbose, "> part %s: %s\n", c.Redactor.Redact(p.Name), c.Redactor.Redact(p.Value))
 			}
 		}
 	}

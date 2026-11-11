@@ -21,6 +21,7 @@ type Input struct {
 	P       []string          // raw -p values: name=v, query.name=v, path.name=v, header.name=v
 	Data    string            // -d: @file, - (stdin) or literal
 	Fields  []string          // -f: k=v or k:=json
+	Forms   []string          // -F: name=value or name=@file[;type=..][;filename=..]
 	Headers []string          // -H: "Name: value"
 	Stdin   io.Reader         // source for -d -; nil means os.Stdin
 }
@@ -31,6 +32,7 @@ type Prepared struct {
 	URL    string
 	Header http.Header
 	Body   []byte
+	Parts  []Part // multipart parts; Body is assembled by Execute after the protect check
 }
 
 const (
@@ -101,7 +103,7 @@ func Build(op *model.Operation, in Input, env model.Env, basePath string) (*Prep
 	}
 	u.RawQuery = q.Encode()
 
-	body, ctype, err := buildBody(op, in)
+	body, ctype, parts, err := buildBody(op, in)
 	if err != nil {
 		return nil, err
 	}
@@ -116,7 +118,14 @@ func Build(op *model.Operation, in Input, env model.Env, basePath string) (*Prep
 		}
 		hdr.Set(name, strings.TrimSpace(value))
 	}
-	return &Prepared{Method: method, URL: u.String(), Header: hdr, Body: body}, nil
+	// Checked after -p header.* and -H are merged so every source of Content-Type is seen.
+	if len(parts) > 0 && hdr.Get("Content-Type") != "" {
+		return nil, model.Errorf(model.ExitUsage, "-F cannot be combined with a Content-Type header (it would break the multipart boundary)")
+	}
+	if len(parts) == 0 && in.Data != "" && bodyType(op) == "multipart" && hdr.Get("Content-Type") == "" {
+		return nil, model.Errorf(model.ExitUsage, "multipart body with -d needs -H 'Content-Type: ...'; or use -F")
+	}
+	return &Prepared{Method: method, URL: u.String(), Header: hdr, Body: body, Parts: parts}, nil
 }
 
 // checkRawPath rejects full URLs and protocol-relative paths so credentials only reach base_url.
@@ -193,6 +202,9 @@ func collectValues(op *model.Operation, in Input) (map[string][]string, error) {
 		loc := ""
 		if op != nil {
 			if locs := locate(name); len(locs) > 0 {
+				if isHidden(op, "", name) {
+					return nil, model.Errorf(model.ExitUsage, "parameter %q is hidden by overlay", name)
+				}
 				if len(locs) > 1 {
 					return nil, model.Errorf(model.ExitUsage, "parameter %q exists in several locations, use -p <location>.%s=value", name, name)
 				}
@@ -201,6 +213,9 @@ func collectValues(op *model.Operation, in Input) (map[string][]string, error) {
 		}
 		if loc == "" {
 			if l, n, found := strings.Cut(name, "."); found && isLoc(l) && n != "" {
+				if op != nil && isHidden(op, l, n) {
+					return nil, model.Errorf(model.ExitUsage, "parameter %q is hidden by overlay", n)
+				}
 				loc, name = l, n
 			}
 		}
@@ -218,6 +233,16 @@ func collectValues(op *model.Operation, in Input) (map[string][]string, error) {
 		}
 	}
 	return vals, nil
+}
+
+// isHidden reports whether the operation has a hidden parameter with this name (in loc, or anywhere when loc is empty).
+func isHidden(op *model.Operation, loc, name string) bool {
+	for _, p := range op.Params {
+		if p.Hidden && p.Name == name && (loc == "" || p.In == loc) {
+			return true
+		}
+	}
+	return false
 }
 
 func sortedStringKeys(m map[string]string) []string {
