@@ -445,7 +445,7 @@ func TestOverlayConfigCheck(t *testing.T) {
 		assert.NoError(t, os.MkdirAll(filepath.Join(dir, "overlays"), 0700))
 		assert.NoError(t, os.WriteFile(filepath.Join(dir, "overlays", "oas.yaml"), []byte("operations: {}\n"), 0600))
 		code, out, _ := runIO(t, "config", "check")
-		assert.Eq(t, 1, code)
+		assert.Eq(t, 0, code)
 		assert.Contains(t, out, "site oas overlay: no cached index; run apic site refresh oas")
 	})
 }

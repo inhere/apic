@@ -28,8 +28,8 @@ func checkOverlays(d *wiring.Deps) (msgs []string, failed bool) {
 		}
 		idx, err := loadIndexCached(d, name, d.Cfg.Sites[name])
 		if err != nil || idx == nil {
+			// Not a structural error: report it without failing the check.
 			msgs = append(msgs, "site "+name+" overlay: no cached index; run apic site refresh "+name)
-			failed = true
 			continue
 		}
 		ov, err := config.LoadOverlay(d.Dir, name)
