@@ -2,10 +2,12 @@ package spec
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/goccy/go-yaml"
@@ -35,6 +37,7 @@ type simpleParam struct {
 	Required bool   `yaml:"required"`
 	Type     string `yaml:"type"`
 	Desc     string `yaml:"desc"`
+	Enum     []any  `yaml:"enum"` // any: YAML numbers and booleans decode to Go types
 }
 
 type simpleBody struct {
@@ -100,7 +103,11 @@ func (SimpleLoader) Load(ctx context.Context, src model.Source, dir string) (*mo
 			return nil, model.Errorf(model.ExitLocal, "%s: operation %q must have exactly one method", file, name)
 		}
 		for _, p := range raw.Params {
-			op.Params = append(op.Params, model.Param{Name: p.Name, In: p.In, Required: p.Required, Type: p.Type, Desc: p.Desc})
+			enum, err := simpleEnum(p.Enum)
+			if err != nil {
+				return nil, model.Errorf(model.ExitLocal, "%s operation %s param %s: %v", file, name, p.Name, err)
+			}
+			op.Params = append(op.Params, model.Param{Name: p.Name, In: p.In, Required: p.Required, Type: p.Type, Desc: p.Desc, Enum: enum})
 		}
 		for _, q := range raw.Query {
 			op.Params = append(op.Params, model.Param{Name: q, In: "query", Type: "string"})
@@ -129,4 +136,59 @@ func (SimpleLoader) Load(ctx context.Context, src model.Source, dir string) (*mo
 		index.Ops = append(index.Ops, op)
 	}
 	return index, nil
+}
+
+// simpleEnum converts YAML enum values to the strings compared at call time.
+// nil (absent, "enum:" or "enum: ~") means no enum. Numbers are converted by
+// their decoded Go type, so 1.0 becomes "1" and 0x10 becomes "16".
+func simpleEnum(raw []any) ([]string, error) {
+	if raw == nil {
+		return nil, nil
+	}
+	out := make([]string, 0, len(raw))
+	seen := make(map[string]bool, len(raw))
+	for _, item := range raw {
+		var text string
+		switch v := item.(type) {
+		case string:
+			text = v
+		case bool:
+			text = strconv.FormatBool(v)
+		case int:
+			text = strconv.FormatInt(int64(v), 10)
+		case int8:
+			text = strconv.FormatInt(int64(v), 10)
+		case int16:
+			text = strconv.FormatInt(int64(v), 10)
+		case int32:
+			text = strconv.FormatInt(int64(v), 10)
+		case int64:
+			text = strconv.FormatInt(v, 10)
+		case uint:
+			text = strconv.FormatUint(uint64(v), 10)
+		case uint8:
+			text = strconv.FormatUint(uint64(v), 10)
+		case uint16:
+			text = strconv.FormatUint(uint64(v), 10)
+		case uint32:
+			text = strconv.FormatUint(uint64(v), 10)
+		case uint64:
+			text = strconv.FormatUint(v, 10)
+		case float32:
+			text = strconv.FormatFloat(float64(v), 'f', -1, 32)
+		case float64:
+			text = strconv.FormatFloat(v, 'f', -1, 64)
+		default: // map, slice, nil
+			return nil, errors.New("enum values must be strings, numbers or booleans")
+		}
+		if text == "" || seen[text] {
+			return nil, errors.New("enum must be a non-empty list of distinct non-empty values")
+		}
+		seen[text] = true
+		out = append(out, text)
+	}
+	if len(out) == 0 {
+		return nil, errors.New("enum must be a non-empty list of distinct non-empty values")
+	}
+	return out, nil
 }

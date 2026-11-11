@@ -76,3 +76,69 @@ func TestSimpleVariants(t *testing.T) {
 		})
 	}
 }
+
+func TestSimpleEnum(t *testing.T) {
+	load := func(t *testing.T, paramYAML string) ([]model.Param, error) {
+		t.Helper()
+		dir := t.TempDir()
+		file := filepath.Join(dir, "demo.yaml")
+		content := "operations:\n  demo:\n    get: /demo\n    params:\n      - {name: p, in: query" + paramYAML + "}\n"
+		assert.Require(t, assert.NoError(t, os.WriteFile(file, []byte(content), 0600)))
+		index, err := (spec.SimpleLoader{}).Load(context.Background(), model.Source{File: "demo.yaml"}, dir)
+		if err != nil {
+			return nil, err
+		}
+		return index.Ops[0].Params, nil
+	}
+	enumOf := func(t *testing.T, paramYAML string) []string {
+		t.Helper()
+		params, err := load(t, paramYAML)
+		assert.Require(t, assert.NoError(t, err))
+		return params[0].Enum
+	}
+
+	t.Run("string enum", func(t *testing.T) {
+		assert.Eq(t, []string{"opened", "closed", "all"}, enumOf(t, ", enum: [opened, closed, all]"))
+	})
+	t.Run("numbers and booleans become strings", func(t *testing.T) {
+		assert.Eq(t, []string{"1", "true"}, enumOf(t, ", enum: [1, true]"))
+		assert.Eq(t, []string{"-2", "false"}, enumOf(t, ", enum: [-2, false]"))
+	})
+	t.Run("float and hex converted by type", func(t *testing.T) {
+		assert.Eq(t, []string{"1", "16"}, enumOf(t, ", enum: [1.0, 0x10]"))
+		assert.Eq(t, []string{"1.5"}, enumOf(t, ", enum: [1.5]"))
+	})
+	t.Run("quoted keeps original text", func(t *testing.T) {
+		assert.Eq(t, []string{"1.0", "007"}, enumOf(t, `, enum: ["1.0", "007"]`))
+	})
+	t.Run("nil enum means none", func(t *testing.T) {
+		assert.Nil(t, enumOf(t, ", enum: ~"))
+		assert.Nil(t, enumOf(t, ", enum: "))
+		assert.Nil(t, enumOf(t, ""))
+	})
+	t.Run("invalid enums fail the load", func(t *testing.T) {
+		cases := map[string]string{
+			"empty list":       ", enum: []",
+			"empty string":     `, enum: [""]`,
+			"duplicate":        ", enum: [a, a]",
+			"duplicate number": `, enum: [1, "1"]`,
+			"map element":      ", enum: [{a: 1}]",
+			"slice element":    ", enum: [[1]]",
+			"null element":     ", enum: [a, ~]",
+		}
+		for name, y := range cases {
+			t.Run(name, func(t *testing.T) {
+				_, err := load(t, y)
+				assert.Err(t, err)
+				var coded *model.CodedError
+				assert.True(t, errors.As(err, &coded))
+				assert.Eq(t, model.ExitLocal, coded.Code())
+				assert.Contains(t, err.Error(), "operation demo param p: enum ")
+			})
+		}
+		_, err := load(t, ", enum: [{a: 1}]")
+		assert.Contains(t, err.Error(), "enum values must be strings, numbers or booleans")
+		_, err = load(t, ", enum: []")
+		assert.Contains(t, err.Error(), "enum must be a non-empty list of distinct non-empty values")
+	})
+}
