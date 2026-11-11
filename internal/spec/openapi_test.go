@@ -222,6 +222,10 @@ func TestCacheRefresh(t *testing.T) {
 	assert.Eq(t, 0, len(warnings))
 	assert.Eq(t, int32(2), calls.Load())
 	failing.Store(true)
+	// Expire the cache deterministically: on Windows the clock is coarse, so a
+	// 1ns TTL alone may still look fresh right after the previous fetch.
+	metaFile := filepath.Join(dir, "cache", "specs", "demo.meta.json")
+	assert.Require(t, assert.NoError(t, os.WriteFile(metaFile, []byte(`{"etag":"\"v1\"","fetched_at":"2000-01-01T00:00:00Z"}`), 0o600)))
 	src.TTL = time.Nanosecond
 	stale, warnings, err := spec.Index(context.Background(), "demo", src, dir, spec.IndexOptions{})
 	assert.Require(t, assert.NoError(t, err))

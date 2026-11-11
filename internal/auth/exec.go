@@ -230,7 +230,7 @@ func (p *Provider) runExec(ctx context.Context) (string, time.Time, error) {
 			return "", time.Time{}, p.execFailure(code, "exec timed out (request deadline)")
 		case errors.Is(runCtx.Err(), context.DeadlineExceeded):
 			return "", time.Time{}, p.execFailure(code, "exec timed out after "+timeout.String())
-		case cmd.ProcessState == nil && errors.Is(runErr, os.ErrNotExist):
+		case cmd.ProcessState == nil && (errors.Is(runErr, os.ErrNotExist) || errors.Is(runErr, exec.ErrNotFound)):
 			return "", time.Time{}, p.execFailure(-1, "command not found")
 		case cmd.ProcessState == nil && errors.Is(runErr, os.ErrPermission):
 			return "", time.Time{}, p.execFailure(-1, "permission denied")

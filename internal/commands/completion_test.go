@@ -69,7 +69,7 @@ sites:
       tok: {type: bearer, token: literal}
       ex:
         type: exec
-        exec: {command: [%q, "count=%s", "token=tok-1"]}
+        exec: {command: [%q, %q, "token=tok-1"]}
   jk:
     source: {type: simple, file: %q}
     default_env: test
@@ -78,7 +78,7 @@ sites:
     source: {type: simple, file: %q}
     default_env: test
     envs: {test: {base_url: %q}}
-%s`, srv.URL+"/openapi.json", srv.URL, srv.URL, srv.URL, stub, count, def, srv.URL, def, srv.URL, extraSites)
+%s`, srv.URL+"/openapi.json", srv.URL, srv.URL, srv.URL, stub, "count="+count, def, srv.URL, def, srv.URL, extraSites)
 	assert.NoError(t, os.WriteFile(filepath.Join(dir, "config.yaml"), []byte(cfg), 0o600))
 	code, _, errOut := runIO(t, "site", "refresh", "pet")
 	assert.Eq(t, 0, code, errOut)

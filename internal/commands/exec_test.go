@@ -186,8 +186,8 @@ func TestShowMasksExec(t *testing.T) {
 	for _, args := range [][]string{{"site", "show", "pet"}, {"config", "show"}} {
 		code, out, errOut := runIO(t, args...)
 		assert.Eq(t, 0, code, errOut)
-		assert.Contains(t, out, stub)
-		assert.Contains(t, out, `"***"`+"\n") // command: [stub, "***"]
+		assert.Contains(t, out, filepath.Base(stub)) // YAML escapes Windows backslashes
+		assert.Contains(t, out, `"***"`+"\n")        // command: [stub, "***"]
 		for _, banned := range []string{sentLit, sentEnv, "count=", "echoargs", "token=tok-cli", "plain-literal-value"} {
 			assert.NotContains(t, out, banned, strings.Join(args, " "))
 		}
@@ -307,8 +307,8 @@ sites:
     auths:
       ex:
         type: exec
-        exec: {command: [%q, "count=%s", "token=tok-src-1"]}
-`, f.srv.URL+"/openapi.json", f.srv.URL, stub, count)
+        exec: {command: [%q, %q, "token=tok-src-1"]}
+`, f.srv.URL+"/openapi.json", f.srv.URL, stub, "count="+count)
 		assert.NoError(t, os.WriteFile(filepath.Join(dir, "config.yaml"), []byte(cfg), 0o600))
 		code, _, errOut := runIO(t, "site", "refresh", "rem")
 		assert.Eq(t, 1, code, errOut)
