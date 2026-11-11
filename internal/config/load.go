@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/goccy/go-yaml"
 	"github.com/inhere/apic/internal/model"
@@ -96,6 +97,32 @@ func validateSite(dir, file, name string, site *model.Site) error {
 	if site.Source.File != "" && !filepath.IsAbs(site.Source.File) {
 		site.Source.File = filepath.Join(dir, site.Source.File)
 	}
+	for authName, auth := range site.Auths {
+		if auth.Type != "exec" {
+			continue
+		}
+		if len(auth.Exec.Command) == 0 || auth.Exec.Command[0] == "" {
+			return model.Errorf(model.ExitLocal, "%s site %q auth %q: exec command must not be empty", file, name, authName)
+		}
+		if auth.Exec.Format != "" && auth.Exec.Format != "text" && auth.Exec.Format != "json" {
+			return model.Errorf(model.ExitLocal, "%s site %q auth %q: exec format must be text or json", file, name, authName)
+		}
+		if auth.Exec.Format == "json" && auth.Exec.Token.Path == "" {
+			return model.Errorf(model.ExitLocal, "%s site %q auth %q: exec token.path is required for json format", file, name, authName)
+		}
+		for field, value := range map[string]string{
+			"timeout": auth.Exec.Timeout,
+			"ttl":     auth.Exec.TTL,
+		} {
+			if value == "" {
+				continue
+			}
+			duration, err := time.ParseDuration(value)
+			if err != nil || duration <= 0 {
+				return model.Errorf(model.ExitLocal, "%s site %q auth %q: exec %s must be a positive duration", file, name, authName, field)
+			}
+		}
+	}
 	site.Origin = file
 	return nil
 }
@@ -124,6 +151,9 @@ func decodeConfig(data []byte, cfg *model.Config) error {
 			}
 			// The design example puts token/expires/apply beside login, while the
 			// typed model stores them inside LoginSpec. Accept both spellings.
+			if err := validateExec(siteRaw); err != nil {
+				return fmt.Errorf("site %q: %w", name, err)
+			}
 			normalizeLogin(siteRaw)
 			var site model.Site
 			if err := decodeRaw(siteRaw, &site); err != nil {
@@ -141,8 +171,43 @@ func decodeSite(data []byte, site *model.Site) error {
 	if err := yaml.Unmarshal(data, &raw); err != nil {
 		return err
 	}
+	if err := validateExec(raw); err != nil {
+		return err
+	}
 	normalizeLogin(raw)
 	return decodeRaw(raw, site)
+}
+
+func validateExec(site map[string]any) error {
+	auths, ok := site["auths"].(map[string]any)
+	if !ok {
+		return nil
+	}
+	allowed := map[string]bool{
+		"command": true, "env": true, "timeout": true, "format": true,
+		"token": true, "expires": true, "ttl": true,
+	}
+	for name, value := range auths {
+		auth, ok := value.(map[string]any)
+		if !ok || auth["type"] != "exec" {
+			continue
+		}
+		if _, exists := auth["login"]; exists {
+			return fmt.Errorf("auth %q: exec authentication cannot contain login", name)
+		}
+		if exec, exists := auth["exec"]; exists && exec != nil {
+			execMap, ok := exec.(map[string]any)
+			if !ok {
+				continue
+			}
+			for key := range execMap {
+				if !allowed[key] {
+					return fmt.Errorf("auth %q: unknown exec key %q", name, key)
+				}
+			}
+		}
+	}
+	return nil
 }
 
 func decodeRaw(raw map[string]any, into any) error {

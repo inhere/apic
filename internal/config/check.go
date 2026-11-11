@@ -27,6 +27,21 @@ func Check(cfg *model.Config) []string {
 					warnings = append(warnings, prefix+" "+field+": plaintext credential")
 				}
 			}
+			for key, value := range auth.Exec.Env {
+				if value != "" && !isReference(value) {
+					warnings = append(warnings, prefix+" exec.env."+key+": plaintext credential")
+				}
+			}
+			if auth.Type == "exec" {
+				command := ""
+				if len(auth.Exec.Command) > 0 {
+					command = auth.Exec.Command[0]
+				}
+				if strings.Contains(command, "${env:") {
+					command = "***"
+				}
+				warnings = append(warnings, prefix+": runs "+command)
+			}
 			checkBody(auth.Login.Body, prefix+" login.body", &warnings)
 		}
 	}
