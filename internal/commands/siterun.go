@@ -46,7 +46,10 @@ func (sc *siteContext) run(op *model.Operation, in request.Input) error {
 		return sc.redactErr(err)
 	}
 	res := &output.Result{Status: resp.Status, Header: resp.Header, Body: resp.Body, Curl: resp.Curl}
-	code := output.Render(res, mode, os.Stdout, os.Stderr, sc.d.Redactor, g.Include, term.IsTerminal(int(os.Stdout.Fd())))
+	code, rerr := output.Render(res, output.RenderOptions{Mode: mode, IncludeHeaders: g.Include, TTY: term.IsTerminal(int(os.Stdout.Fd()))}, os.Stdout, os.Stderr, sc.d.Redactor)
+	if rerr != nil {
+		return sc.redactErr(rerr)
+	}
 	if code != model.ExitOK {
 		if resp.Status == 0 {
 			return model.Errorf(code, "write output failed")

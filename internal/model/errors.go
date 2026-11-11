@@ -14,6 +14,7 @@ const (
 	ExitHTTP4xx
 	ExitHTTP5xx
 	ExitProtected
+	ExitPostProcess
 )
 
 // CodedError carries an exit code and the underlying error.

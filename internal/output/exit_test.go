@@ -19,17 +19,23 @@ func TestRender(t *testing.T) {
 	}{{200, 0}, {204, 0}, {302, 0}, {404, 4}, {499, 4}, {500, 5}, {503, 5}} {
 		var out, errOut bytes.Buffer
 		res := &output.Result{Status: tc.status, Header: http.Header{"Set-Cookie": {"sid=secret-value"}, "X-Note": {"has secret-value"}}, Body: []byte(`{"a":1}`)}
-		assert.Eq(t, tc.want, output.Render(res, "raw", &out, &errOut, red, true, false))
+		code, err := output.Render(res, output.RenderOptions{Mode: "raw", IncludeHeaders: true}, &out, &errOut, red)
+		assert.NoError(t, err)
+		assert.Eq(t, tc.want, code)
 		assert.Eq(t, `{"a":1}`, out.String())
 		assert.Contains(t, errOut.String(), "Set-Cookie: ***")
 		assert.NotContains(t, errOut.String(), "secret-value")
 	}
 	var out, errOut bytes.Buffer
 	res := &output.Result{Status: 200, Body: []byte(`{"a":1}`)}
-	assert.Eq(t, 0, output.Render(res, "raw", &out, &errOut, red, false, false))
+	code, err := output.Render(res, output.RenderOptions{Mode: "raw"}, &out, &errOut, red)
+	assert.NoError(t, err)
+	assert.Eq(t, 0, code)
 	assert.Eq(t, "", errOut.String())
 	out.Reset()
-	assert.Eq(t, 0, output.Render(&output.Result{Curl: "curl 'x'"}, "raw", &out, &errOut, red, true, false))
+	code, err = output.Render(&output.Result{Curl: "curl 'x'"}, output.RenderOptions{Mode: "raw", IncludeHeaders: true}, &out, &errOut, red)
+	assert.NoError(t, err)
+	assert.Eq(t, 0, code)
 	assert.Eq(t, "curl 'x'\n", out.String())
 	assert.Eq(t, "", errOut.String())
 }
