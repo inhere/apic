@@ -15,6 +15,7 @@ import (
 var reservedNames = map[string]bool{
 	"site": true, "ops": true, "desc": true, "use": true, "auth": true,
 	"link": true, "config": true, "help": true, "version": true, "skill": true,
+	"overlay": true,
 }
 
 // Load merges the optional config.yaml and one-site-per-file sites/*.yaml.

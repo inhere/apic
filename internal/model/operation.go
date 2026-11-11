@@ -21,6 +21,7 @@ type Param struct {
 	Type     string
 	Enum     []string
 	Desc     string
+	Hidden   bool `json:",omitempty"`
 }
 
 // BodySpec describes an operation's request body.
