@@ -32,6 +32,35 @@ type Env struct {
 	Protect  bool   `yaml:"protect,omitempty"`
 	Insecure bool   `yaml:"insecure,omitempty"`
 	CAFile   string `yaml:"ca_file,omitempty"`
+	Auth     string `yaml:"auth,omitempty"` // auth used when this env is selected
+}
+
+// Sources reported by EffectiveAuth.
+const (
+	AuthFromFlag    = "flag"
+	AuthFromEnv     = "env"
+	AuthFromSaved   = "saved"
+	AuthFromDefault = "default"
+)
+
+// EffectiveAuth returns the auth name and its source by the priority
+// flag > envs[env].Auth > saved > DefaultAuth; ("", "") when none is set.
+// It does not check that the name exists (display commands tolerate typos).
+// A missing env skips the env level.
+func (s *Site) EffectiveAuth(env, saved, flag string) (name, source string) {
+	if flag != "" {
+		return flag, AuthFromFlag
+	}
+	if e, ok := s.Envs[env]; ok && e.Auth != "" {
+		return e.Auth, AuthFromEnv
+	}
+	if saved != "" {
+		return saved, AuthFromSaved
+	}
+	if s.DefaultAuth != "" {
+		return s.DefaultAuth, AuthFromDefault
+	}
+	return "", ""
 }
 
 // AuthSpec describes an authentication identity. Login extraction settings
