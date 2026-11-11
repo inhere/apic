@@ -21,9 +21,12 @@ type IndexOptions struct {
 	Apply     func(*http.Request) error
 }
 
+const indexVersion = 2
+
 type cacheMeta struct {
-	ETag      string    `json:"etag"`
-	FetchedAt time.Time `json:"fetched_at"`
+	ETag         string    `json:"etag"`
+	FetchedAt    time.Time `json:"fetched_at"`
+	IndexVersion int       `json:"index_version,omitempty"`
 }
 
 // Index loads a simple source directly, or maintains an on-disk OpenAPI index.
@@ -40,28 +43,59 @@ func Index(ctx context.Context, site string, src model.Source, dir string, opt I
 	var old model.Index
 	oldData, readErr := os.ReadFile(indexFile)
 	haveOld := readErr == nil && json.Unmarshal(oldData, &old) == nil
-	if opt.CacheOnly {
-		if haveOld {
-			return &old, nil, nil
-		}
-		return nil, nil, model.Errorf(model.ExitLocal, "no cached index for %s", site)
-	}
 	var meta cacheMeta
 	if data, err := os.ReadFile(metaFile); err == nil {
 		_ = json.Unmarshal(data, &meta)
+	}
+	var warnings []string
+	if haveOld && meta.IndexVersion != indexVersion {
+		// Rebuild old indexes locally so a format change does not require a fetch.
+		raw, err := os.ReadFile(rawFile)
+		if err == nil {
+			rebuilt, _, rebuildErr := loadOpenAPI(ctx, src, raw)
+			if rebuildErr == nil {
+				old = *rebuilt
+				meta.ETag = ""
+				meta.IndexVersion = indexVersion
+				indexData, marshalErr := json.Marshal(&old)
+				if marshalErr != nil {
+					warnings = append(warnings, fmt.Sprintf("rebuild %s index failed: %v", site, marshalErr))
+				} else if writeErr := atomicCacheWrite(indexFile, indexData); writeErr != nil {
+					warnings = append(warnings, fmt.Sprintf("rebuild %s index failed: %v", site, writeErr))
+				} else if metaData, marshalErr := json.Marshal(meta); marshalErr != nil {
+					warnings = append(warnings, fmt.Sprintf("rebuild %s metadata failed: %v", site, marshalErr))
+				} else if writeErr := atomicCacheWrite(metaFile, metaData); writeErr != nil {
+					warnings = append(warnings, fmt.Sprintf("rebuild %s metadata failed: %v", site, writeErr))
+				}
+			} else {
+				haveOld = false
+				meta.ETag = ""
+				meta.FetchedAt = time.Time{}
+			}
+		} else {
+			haveOld = false
+			meta.ETag = ""
+			meta.FetchedAt = time.Time{}
+		}
+	}
+	if opt.CacheOnly {
+		if haveOld {
+			return &old, warnings, nil
+		}
+		return nil, warnings, model.Errorf(model.ExitLocal, "no cached index for %s", site)
 	}
 	ttl := src.TTL
 	if ttl <= 0 {
 		ttl = 24 * time.Hour
 	}
 	if haveOld && !opt.Refresh && !meta.FetchedAt.IsZero() && time.Since(meta.FetchedAt) < ttl {
-		return &old, nil, nil
+		return &old, warnings, nil
 	}
 	stale := func(err error) (*model.Index, []string, error) {
 		if haveOld {
-			return &old, []string{fmt.Sprintf("refresh %s failed: %v; using cached index", site, err)}, nil
+			return &old, append(warnings, fmt.Sprintf("refresh %s failed: %v; using cached index", site, err)), nil
 		}
-		return nil, nil, model.Errorf(model.ExitLocal, "no cached index for %s; run apic site refresh %s: %v", site, site, err)
+		return nil, warnings, model.Errorf(model.ExitLocal, "no cached index for %s; run apic site refresh %s: %v", site, site, err)
 	}
 	raw, etag, notModified, err := Fetch(ctx, src, dir, FetchOptions{Client: opt.Client, ETag: meta.ETag, Apply: opt.Apply})
 	if err != nil {
@@ -72,6 +106,7 @@ func Index(ctx context.Context, site string, src model.Source, dir string, opt I
 			return stale(errors.New("server returned 304 without a cached index"))
 		}
 		meta.FetchedAt = time.Now()
+		meta.IndexVersion = indexVersion
 		data, err := json.Marshal(meta)
 		if err != nil {
 			return stale(err)
@@ -79,9 +114,9 @@ func Index(ctx context.Context, site string, src model.Source, dir string, opt I
 		if err := atomicCacheWrite(metaFile, data); err != nil {
 			return stale(err)
 		}
-		return &old, nil, nil
+		return &old, warnings, nil
 	}
-	index, warnings, err := loadOpenAPI(ctx, src, raw)
+	index, loadWarnings, err := loadOpenAPI(ctx, src, raw)
 	if err != nil {
 		return stale(err)
 	}
@@ -89,7 +124,7 @@ func Index(ctx context.Context, site string, src model.Source, dir string, opt I
 	if err != nil {
 		return stale(err)
 	}
-	metaData, err := json.Marshal(cacheMeta{ETag: etag, FetchedAt: time.Now()})
+	metaData, err := json.Marshal(cacheMeta{ETag: etag, FetchedAt: time.Now(), IndexVersion: indexVersion})
 	if err != nil {
 		return stale(err)
 	}
@@ -105,7 +140,7 @@ func Index(ctx context.Context, site string, src model.Source, dir string, opt I
 	if err := atomicCacheWrite(metaFile, metaData); err != nil {
 		return stale(err)
 	}
-	return index, warnings, nil
+	return index, append(warnings, loadWarnings...), nil
 }
 
 func atomicCacheWrite(path string, data []byte) error {
