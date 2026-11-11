@@ -25,8 +25,9 @@ var layeringTable = map[string][]string{
 	"internal/request":  {"internal/model"},
 	"internal/output":   {"internal/model"},
 	"internal/link":     {"internal/model"},
-	"internal/wiring":   {"internal/model", "internal/config", "internal/spec", "internal/auth", "internal/request", "internal/output", "internal/link"},
-	"internal/commands": {"internal/model", "internal/config", "internal/spec", "internal/auth", "internal/request", "internal/output", "internal/link", "internal/wiring"},
+	"internal/skillgen": {"internal/model"},
+	"internal/wiring":   {"internal/model", "internal/config", "internal/spec", "internal/auth", "internal/request", "internal/output", "internal/link", "internal/skillgen"},
+	"internal/commands": {"internal/model", "internal/config", "internal/spec", "internal/auth", "internal/request", "internal/output", "internal/link", "internal/skillgen", "internal/wiring"},
 }
 
 type pkgEdges struct {

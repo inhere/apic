@@ -25,6 +25,6 @@ func newApp(info BuildInfo, g *globalOpts, red *model.Redactor) *gcli.App {
 			return false
 		})
 		g.bind(app.Flags())
-		app.Add(siteCommand(g), opsCommand(g), descCommand(g), configCommand(), useCommand(g), authCommand(g), linkCommand(g))
+		app.Add(siteCommand(g), opsCommand(g), descCommand(g), configCommand(), useCommand(g), authCommand(g), linkCommand(g), skillCommand())
 	})
 }
