@@ -13,6 +13,7 @@ import (
 // the site name, after it and after the operation name.
 type globalOpts struct {
 	Env, Auth, Output string
+	Pick              string
 	Include, Verbose  bool
 	DryRun, Yes       bool
 	Timeout           string
@@ -28,7 +29,7 @@ type siteOpts struct {
 // reservedOptNames are option names a generated parameter option must not use.
 var reservedOptNames = map[string]bool{
 	"env": true, "auth": true, "output": true, "include": true, "verbose": true,
-	"dry-run": true, "yes": true, "timeout": true, "header": true,
+	"dry-run": true, "yes": true, "timeout": true, "header": true, "pick": true,
 	"help": true, "version": true, "gen-completion": true, "in-completion": true, "api": true,
 	"X": true, "d": true, "f": true, "p": true, "o": true, "i": true, "v": true, "H": true, "h": true, "V": true,
 }
@@ -37,7 +38,8 @@ var reservedOptNames = map[string]bool{
 func (g *globalOpts) bind(fs *gflag.Flags) {
 	fs.StrOpt(&g.Env, "env", "", "", "Environment for this request only")
 	fs.StrOpt(&g.Auth, "auth", "", "", "Authentication for this request only")
-	fs.StrOpt(&g.Output, "output", "o", "", "Output format: auto, json or raw")
+	fs.StrOpt(&g.Output, "output", "o", "", "Output format: auto, json, raw, yaml or table")
+	fs.StrOpt(&g.Pick, "pick", "", "", "Pick a value from a 2xx JSON response by path, e.g. data.items.*.id")
 	fs.BoolOpt(&g.Include, "include", "i", false, "Print status line and response headers to stderr")
 	fs.BoolOpt(&g.Verbose, "verbose", "v", false, "Print request line and headers to stderr (secrets masked)")
 	fs.BoolOpt(&g.DryRun, "dry-run", "", false, "Print the equivalent curl command without sending")
@@ -64,7 +66,7 @@ func globalSpec() GlobalSpec {
 	return GlobalSpec{Flags: map[string]bool{
 		"--env": true, "--auth": true, "--output": true, "-o": true,
 		"--include": false, "-i": false, "--verbose": false, "-v": false,
-		"--dry-run": false, "--yes": false, "--timeout": true,
+		"--dry-run": false, "--yes": false, "--timeout": true, "--pick": true,
 		"--header": true, "-H": true,
 	}}
 }

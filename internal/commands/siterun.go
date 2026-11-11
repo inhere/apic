@@ -28,6 +28,14 @@ func (sc *siteContext) run(op *model.Operation, in request.Input) error {
 	if err != nil {
 		return err
 	}
+	var pick *model.Pick
+	if g.Pick != "" {
+		pk, perr := model.ParsePick(g.Pick)
+		if perr != nil {
+			return perr
+		}
+		pick = &pk
+	}
 	sel, err := wiring.Resolve(sc.d, sc.name, sc.site, g.Env, g.Auth)
 	if err != nil {
 		return err
@@ -46,7 +54,7 @@ func (sc *siteContext) run(op *model.Operation, in request.Input) error {
 		return sc.redactErr(err)
 	}
 	res := &output.Result{Status: resp.Status, Header: resp.Header, Body: resp.Body, Curl: resp.Curl}
-	code, rerr := output.Render(res, output.RenderOptions{Mode: mode, IncludeHeaders: g.Include, TTY: term.IsTerminal(int(os.Stdout.Fd()))}, os.Stdout, os.Stderr, sc.d.Redactor)
+	code, rerr := output.Render(res, output.RenderOptions{Mode: mode, Pick: pick, IncludeHeaders: g.Include, TTY: term.IsTerminal(int(os.Stdout.Fd()))}, os.Stdout, os.Stderr, sc.d.Redactor)
 	if rerr != nil {
 		return sc.redactErr(rerr)
 	}
@@ -83,10 +91,10 @@ func outputMode(configured, flag string, op *model.Operation) (string, error) {
 		mode = "auto"
 	}
 	switch mode {
-	case "auto", "json", "raw":
+	case "auto", "json", "raw", "yaml", "table":
 		return mode, nil
 	}
-	return "", model.Errorf(model.ExitUsage, "unsupported output format %q (want auto, json or raw)", mode)
+	return "", model.Errorf(model.ExitUsage, "unsupported output format %q (want auto, json, raw, yaml or table)", mode)
 }
 
 // interactive reports whether both stdin and stderr are terminals.
