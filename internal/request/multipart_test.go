@@ -283,7 +283,7 @@ func TestMultipartExecute(t *testing.T) {
 		assert.Eq(t, 0, len(got()))
 		assert.Nil(t, pr.Body)
 		assert.Contains(t, resp.Curl, `--form-string 't=it'\''s @x'`)
-		assert.Contains(t, resp.Curl, `-F 'file=@"`+f+`";type=text/csv;filename="a.csv"'`)
+		assert.Contains(t, resp.Curl, `-F 'file=@"`+formQuote(f)+`";type=text/csv;filename="a.csv"'`) // Windows paths carry backslashes
 		assert.NotContains(t, resp.Curl, "Content-Type")
 		assert.NotContains(t, resp.Curl, "--data-raw")
 		assert.NotContains(t, resp.Curl, sentinel)
