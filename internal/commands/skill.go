@@ -60,7 +60,7 @@ func generateSkill(name string, opt *skillOptions) error {
 	if err != nil {
 		return err
 	}
-	if err := writeString(os.Stderr, "skillc: skillc source add local "+parent+" && skillc install "+skill+"\n"+
+	if err := writeString(os.Stderr, "install with skillc: skillc install -S "+parent+" "+skill+"\n"+
 		"review the file before sharing: it lists internal API paths\n"); err != nil {
 		return err
 	}
