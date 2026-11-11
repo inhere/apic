@@ -583,4 +583,44 @@
 
 ## 进度记录
 
-（实施开始后填写）
+- **2026-11-11 开工**：用户发出执行请求“开始实施 apic 二期”。gofer plan 为 `plan-20261111-143857-bd5d3871`。
+- **前置检查**：
+  - P1 工作树干净，HEAD 为 `c3a9bd4`；P2 Go 1.26.0；P3 素材齐全，基线由 `git archive v0.1.1` 构建。
+  - P4 已确认 bash 的 `COMP_WORDBREAKS` 含 `=`；P5 由评审探针确认；P8 按 gcli 模板写出 zsh、pwsh 片段。
+  - P6 主机在线，有 pwsh 7.6.10；P7 skillc 0.4.0 可用。
+- **执行方式**：
+  - T02、T03 由 suga（gpt-6-sol）在主机 worktree 中完成。两个 job 都因 stall 退出，gofer 自动续跑后完成，审查后在主机上合并。
+  - T01、T04–T07 由 sonnet 子 agent 在主 checkout 中完成，我审查后提交。
+  - T05、T07 与 T02、T03 没有共同文件，提前开工，属于 Operational Discovery。
+- **提交**：
+  - T01 `ff3cb83`。审查时补了一处 Corrective：渲染错误经 `redactErr` 打码。
+  - T05 `0e72b3d`。
+  - T07 `7ba6861`。Corrective：frontmatter 的 description 只用 `PlainText` 净化，不做 Markdown 转义。
+  - T02 `6ee111d`（合并 `c6efb9b`）。
+  - T03 `fd007e8`（合并 `158de5d`）。
+  - T04 `382ce6c`。审查时补了一处 Corrective：Windows 上不带扩展名的路径，先按 PATHEXT 解析出实际执行的文件，再做批处理检查。
+  - T06 `7b0f619`。Corrective：补全时预扫描出错直接输出空，不退回 gcli，避免 ERROR 打到 stdout。
+  - T08 `e57a275`。Corrective：skill 的提示改为 `skillc install -S`，原写法缺少 source sync 这一步。
+- **反向验证**：T01、T04、T05、T06、T07 都做过，详见各子 agent 的汇报。
+- **验收**：完整输出在 `<WP>/tmp/apic-p2-accept/`。
+  - **B1**：在真实 bash 中跑 16 个用例，在 zsh 中跑 5 个用例（用桩替换 `compadd`），全部符合；PowerShell 7.6 在主机上跑 5 个用例，全部符合。补全期间 stderr 为 0 字节，计数服务收到 0 个请求，exec 桩执行 0 次。真实的 zsh 补全菜单没有看到，标为 `UNVERIFIED_REAL_ENV: zsh 交互菜单（复现：zsh 中 eval 补全脚本后按 TAB）`。
+  - **B2**：`go test` 中 pick、render、output 相关用例全部通过。
+  - **B3**：用 big-v2（30 个操作）和 jk 生成 SKILL.md。埋入的 10 类敏感内容，grep 结果都是 0；frontmatter 能解析，标记位置正确。在隔离的 HOME 下，`skillc install` 装进了 tmp 下项目的 `.agents/skills`，真实的 skills 目录没有变化。
+  - **B4**：主机 job `job-20261111-174753-488fa0f1`：
+    - 配置目录断言在 tmp 下；
+    - `.cmd` 桩执行过 1 次，`auth status` 显示已缓存，dry-run 的请求头为 `***`；
+    - a2、a3、a4（绝对路径 `.cmd`、裸命令名、不带扩展名的绝对路径）都因元字符被拒绝，退出 1，标记文件没有增加。
+  - **B5**：
+    - `go vet`、`go test ./...`、TestLayering 通过，最大的源文件 538 行；
+    - `compat.txt` 的 17 条命令在 v0.1.1 基线与新版下输出逐字节一致；
+    - 兼容性用例见 T02、T05 的测试。
+- **文档**：README 中英文版都补了二期功能、安全提示和退出码 7；发布说明草稿在 `docs/release-notes/v0.2.0.md`。
+- **gcli 问题**：已登记 issue `my-tools-74ur`，含共享选项、下钻停止、stdout 报错、单字母选项列成 `--X` 四点。
+
+**完成总结（COMPLETE）**：
+- 主旨：二期第一批四项已交付，即补全、`--pick` 与 yaml/table（含退出码 7）、`apic skill`、exec 认证。
+- 最终状态：B1–B5 全部通过；只有 zsh 交互菜单标为 UNVERIFIED_REAL_ENV。
+- 自主决策：见上文的 4 处 Corrective，以及 T05、T07 提前开工。
+- 提交：`ff3cb83..` 加上本记录所在的提交，共 11 个，含 2 个合并提交。
+- 耗时：约 3 小时，从 14:43 到约 17:50（+08:00）。
+- 剩余：发布 v0.2.0，需要外部动作批准；二期第二批；gcli issue `my-tools-74ur`。

@@ -27,6 +27,10 @@
   - 标记了 `protect: true` 的环境，写操作必须加 `--yes`
   - `allow_methods` 可以把某个认证限制为只读
 - 快捷命令：`apic link pet --name petctl` 生成 `petctl` 脚本（Windows 上同时生成 `.cmd`）
+- shell 补全（bash、zsh、PowerShell）：站点、操作、参数、枚举值和 `--env`/`--auth` 的取值，快捷命令也能补全
+- `--pick data.items.*.id` 从 JSON 响应里取值；`-o yaml`、`-o table` 换格式，数字和字段顺序保持原样
+- `apic skill pet` 生成 `SKILL.md`，教 AI agent 使用这个站点
+- `exec` 认证：从外部命令（vault、SSO 工具等）取 token
 
 ## 安装
 
@@ -133,6 +137,62 @@ apic site add jenkins --def ~/.config/apic/defs/jenkins.yaml --base-url https://
 apic jenkins job-build --name demo --BRANCH main
 ```
 
+### 由外部命令提供 token（`exec`）
+
+```yaml
+auths:
+  sso:
+    type: exec
+    exec:
+      command: [/usr/local/bin/corp-sso, token, --audience, pet]  # argv，不经过 shell
+      env: {SSO_SECRET: "${env:PET_SSO_SECRET}"}                   # 传给命令的环境变量
+      ttl: 30m          # 缓存时长；没有 ttl 或 expires 时每次请求都执行命令
+      # format: json, token: {path: data.token}, expires: {path: expires_in}
+    apply: {header: Authorization, value: "Bearer {token}"}
+```
+
+- **执行方式**：命令不经过 shell，stdin 为空，工作目录是配置目录，相对路径也以配置目录为基准。
+- **超时**：超过 `timeout`（默认 30s）就会被终止。
+- **输出与重试**：命令参数不会出现在任何输出里；收到 401 时重新执行一次命令。
+
+> **安全提示**：
+> - **配置文件等同脚本**：有了 `exec`，`config.yaml` 和 `sites/*.yaml` 都能让 apic 执行命令，不要导入不信任的站点文件。
+> - **Windows 限制**：token 缓存的 0600 权限不生效；命令是 `.bat`/`.cmd` 时，含 `& | < > ^ % ! "` 的参数会被拒绝。
+
+## shell 补全
+
+```bash
+eval "$(apic --gen-completion bash)"        # zsh 同理；PowerShell：apic --gen-completion pwsh | Invoke-Expression
+eval "$(apic link ls --completion bash)"    # 快捷命令；link / link rm 之后重新执行
+```
+
+- **无副作用**：补全只读缓存的定义，不发请求、不登录、不执行 `exec` 命令。
+- **已知限制**：选项值之后（`apic pet --env dev list-users --<TAB>`）只能补出站点层的选项。
+
+## 取值与换格式
+
+```bash
+apic pet list-users --pick data.items.*.name     # ["tom","amy"]
+apic pet get-user --id 7 --pick data.name        # tom（字符串不带引号）
+apic pet list-users --pick data.items -o table
+apic pet list-users -o yaml
+```
+
+- **路径写法**：路径用点号分段，段可以是键名、数组下标（`items.0`）或 `*`。
+- **`*` 的规则**：`*` 表示每个元素，缺少的字段填 `null`，空数组得到 `[]`。
+- **生效范围**：`--pick`、`-o yaml`、`-o table` 只对 2xx 响应生效，其他响应原样输出。
+
+## 生成给 AI agent 用的 skill
+
+```bash
+apic skill pet                       # 写到 <配置目录>/skills/apic-pet/SKILL.md
+skillc install -S ~/.config/apic/skills apic-pet
+```
+
+- **内容**：怎么调用、退出码、env 和 auth 的名字、操作清单；操作数超过 `--max-ops` 时按 tag 汇总。
+- **不含**：base URL 和凭证。
+- **分享前**：先检查一遍。
+
 ## 快捷命令
 
 ```bash
@@ -160,6 +220,7 @@ apic link rm petctl
 | 4 | HTTP 4xx |
 | 5 | HTTP 5xx |
 | 6 | 被写保护拒绝 |
+| 7 | 请求已成功（2xx），但 `--pick` 或 `-o yaml\|table` 处理失败，不要重试 |
 
 ## 开发
 

@@ -34,6 +34,12 @@ secrets masked everywhere.
   `allow_methods` restricts an authentication to read-only methods
 - Shortcut commands: `apic link pet --name petctl` creates a `petctl` script
   (`.cmd` on Windows)
+- Shell completion (bash, zsh, PowerShell) for sites, operations, parameters,
+  enum values and `--env`/`--auth`, including shortcut commands
+- `--pick data.items.*.id` extracts values from a JSON response; `-o yaml` and
+  `-o table` reformat it, keeping numbers and field order intact
+- `apic skill pet` generates a `SKILL.md` that teaches an AI agent to use the site
+- `exec` authentication: get the token from an external command (vault, SSO CLI…)
 
 ## Install
 
@@ -138,6 +144,29 @@ apic site add jenkins --def ~/.config/apic/defs/jenkins.yaml --base-url https://
 apic jenkins job-build --name demo --BRANCH main
 ```
 
+### Token from an external command (`exec`)
+
+```yaml
+auths:
+  sso:
+    type: exec
+    exec:
+      command: [/usr/local/bin/corp-sso, token, --audience, pet]  # argv, no shell
+      env: {SSO_SECRET: "${env:PET_SSO_SECRET}"}                   # passed to the command
+      ttl: 30m          # cache the token; without ttl/expires it runs on every request
+      # format: json, token: {path: data.token}, expires: {path: expires_in}
+    apply: {header: Authorization, value: "Bearer {token}"}
+```
+
+The command runs without a shell, with an empty stdin, in the config directory
+(relative paths are resolved from there) and is killed after `timeout` (30s).
+Its argv never appears in any output. On a 401 the command runs again once.
+
+> **Security:** with `exec`, `config.yaml` and `sites/*.yaml` can make apic run
+> commands, so treat them like scripts and do not import untrusted site files.
+> On Windows the 0600 permission of the token cache is not enforced, and
+> arguments with `& | < > ^ % ! "` are refused when the command is a `.bat`/`.cmd`.
+
 ## Shortcut commands
 
 ```bash
@@ -150,6 +179,41 @@ apic link rm petctl
 Scripts go to `defaults.link_dir`, `~/.local/bin` by default (`%USERPROFILE%\bin`
 on Windows). On Windows a `.cmd` file is also generated; `cmd.exe` re-parses
 `%*`, so pass JSON bodies with `-d @file` there.
+
+## Shell completion
+
+```bash
+eval "$(apic --gen-completion bash)"        # or zsh; PowerShell: apic --gen-completion pwsh | Invoke-Expression
+eval "$(apic link ls --completion bash)"    # shortcut commands; re-run after link / link rm
+```
+
+Completion only reads cached definitions: it never sends requests, logs in or
+runs `exec` commands. Known limit: after an option value
+(`apic pet --env dev list-users --<TAB>`) only site-level options are offered.
+
+## Picking and formatting output
+
+```bash
+apic pet list-users --pick data.items.*.name     # ["tom","amy"]
+apic pet get-user --id 7 --pick data.name        # tom   (strings print bare)
+apic pet list-users --pick data.items -o table
+apic pet list-users -o yaml
+```
+
+A path is dot separated: keys, array indexes (`items.0`) and `*` (every element;
+missing fields become `null`, an empty array gives `[]`). `--pick`, `-o yaml`
+and `-o table` apply to 2xx responses only; other responses print unchanged.
+
+## Generating a skill for AI agents
+
+```bash
+apic skill pet                       # writes <config dir>/skills/apic-pet/SKILL.md
+skillc install -S ~/.config/apic/skills apic-pet
+```
+
+The skill lists how to call the site, the exit codes, environment and
+authentication names (never base URLs or credentials) and the operations
+(grouped by tag when there are more than `--max-ops`). Review it before sharing.
 
 ## Output and exit codes
 
@@ -166,6 +230,7 @@ request line and headers (secrets masked).
 | 4 | HTTP 4xx |
 | 5 | HTTP 5xx |
 | 6 | refused by write protection |
+| 7 | the request succeeded (2xx) but `--pick` / `-o yaml\|table` failed — do not retry |
 
 ## Development
 
