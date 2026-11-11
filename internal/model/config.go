@@ -5,6 +5,7 @@ type Config struct {
 	Version  int              `yaml:"version,omitempty"`
 	Defaults Defaults         `yaml:"defaults,omitempty"`
 	Sites    map[string]*Site `yaml:"sites,omitempty"`
+	Warnings []string         `yaml:"-"`
 }
 
 // Defaults contains settings shared by sites.

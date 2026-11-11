@@ -16,7 +16,7 @@ type BuildInfo struct {
 }
 
 // managementCommands are the reserved top-level command names.
-var managementCommands = []string{"site", "ops", "desc", "use", "auth", "link", "config", "help"}
+var managementCommands = []string{"site", "ops", "desc", "use", "auth", "link", "config", "help", "skill"}
 
 // Run dispatches the command line and returns its exit code.
 //
@@ -31,6 +31,9 @@ func Run(info BuildInfo, args []string) int {
 	d, loadErr := wiring.Load()
 	if loadErr != nil {
 		return runWithoutConfig(info, g, spec, args, loadErr)
+	}
+	if err := printWarnings(d, d.Cfg.Warnings); err != nil {
+		return fail(d.Redactor, err)
 	}
 	sites := make([]string, 0, len(d.Cfg.Sites))
 	for name := range d.Cfg.Sites {
