@@ -16,7 +16,7 @@ type BuildInfo struct {
 }
 
 // managementCommands are the reserved top-level command names.
-var managementCommands = []string{"site", "ops", "desc", "use", "auth", "link", "config", "help", "skill"}
+var managementCommands = []string{"site", "ops", "desc", "use", "auth", "link", "config", "help", "skill", "overlay"}
 
 // Run dispatches the command line and returns its exit code.
 //
@@ -50,7 +50,7 @@ func Run(info BuildInfo, args []string) int {
 	app := newApp(info, g, d.Redactor)
 	if site != "" {
 		sc := &siteContext{d: d, name: site, site: d.Cfg.Sites[site], g: g, so: &siteOpts{}}
-		idx, warnings, err := loadIndex(d, site, sc.site, false)
+		idx, _, warnings, err := loadSiteIndex(d, site, sc.site)
 		if err != nil {
 			return fail(d.Redactor, err)
 		}
@@ -93,7 +93,8 @@ func runCompletion(info BuildInfo, g *globalOpts, spec GlobalSpec, args []string
 	case d == nil:
 	case plan.site != "":
 		sc := &siteContext{d: d, name: plan.site, site: d.Cfg.Sites[plan.site], g: g, so: &siteOpts{}, completion: true}
-		idx, err := loadIndexCached(d, plan.site, sc.site)
+		// Any overlay error yields an empty index, never the unfiltered one.
+		idx, err := loadSiteIndexCached(d, plan.site, sc.site)
 		if err != nil || idx == nil {
 			idx = &model.Index{}
 		}

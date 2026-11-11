@@ -92,6 +92,50 @@ func loadIndexCached(d *wiring.Deps, name string, site *model.Site) (*model.Inde
 	return index, err
 }
 
+// loadSiteIndex is the raw index plus the site's overlay. Warnings combine
+// those of loadIndex and of the overlay; structural overlay errors are local
+// errors with redacted text.
+func loadSiteIndex(d *wiring.Deps, name string, site *model.Site) (*model.Index, []model.OverlayChange, []string, error) {
+	raw, warnings, err := loadIndex(d, name, site, false)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	idx, changes, ovWarnings, err := applySiteOverlay(d, name, raw)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	return idx, changes, append(warnings, ovWarnings...), nil
+}
+
+// loadSiteIndexCached is the completion variant: cache only, and any overlay
+// error is returned (without warnings) so the caller never falls back to the
+// unfiltered index.
+func loadSiteIndexCached(d *wiring.Deps, name string, site *model.Site) (*model.Index, error) {
+	raw, err := loadIndexCached(d, name, site)
+	if err != nil {
+		return nil, err
+	}
+	if raw == nil {
+		return nil, nil
+	}
+	idx, _, _, err := applySiteOverlay(d, name, raw)
+	return idx, err
+}
+
+func applySiteOverlay(d *wiring.Deps, name string, raw *model.Index) (*model.Index, []model.OverlayChange, []string, error) {
+	ov, err := config.LoadOverlay(d.Dir, name)
+	if err == nil {
+		var idx *model.Index
+		var changes []model.OverlayChange
+		var warnings []string
+		idx, changes, warnings, err = spec.ApplyOverlay(raw, ov)
+		if err == nil {
+			return idx, changes, warnings, nil
+		}
+	}
+	return nil, nil, nil, model.Errorf(model.ExitLocal, "%s", d.Redactor.Redact(err.Error()))
+}
+
 func printWarnings(d *wiring.Deps, warnings []string) error {
 	for _, warning := range warnings {
 		if err := writeString(os.Stderr, "warning: "+d.Redactor.Redact(warning)+"\n"); err != nil {

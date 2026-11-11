@@ -103,7 +103,7 @@ func complete(t *testing.T, words ...string) []string {
 	return lines
 }
 
-var managementNames = []string{"auth", "config", "desc", "help", "link", "ops", "site", "skill", "use"}
+var managementNames = []string{"auth", "config", "desc", "help", "link", "ops", "overlay", "site", "skill", "use"}
 
 func withNames(extra ...string) []string {
 	out := append(append([]string{}, managementNames...), extra...)

@@ -47,7 +47,7 @@ func listOps(name string, opt *opsOptions) error {
 	if err != nil {
 		return err
 	}
-	idx, warnings, err := loadIndex(d, name, site, false)
+	idx, _, warnings, err := loadSiteIndex(d, name, site)
 	if err != nil {
 		return err
 	}
@@ -114,7 +114,7 @@ func describeOp(name, operation, format string) error {
 	if err != nil {
 		return err
 	}
-	idx, warnings, err := loadIndex(d, name, site, false)
+	idx, changes, warnings, err := loadSiteIndex(d, name, site)
 	if err != nil {
 		return err
 	}
@@ -131,7 +131,19 @@ func describeOp(name, operation, format string) error {
 	if op == nil {
 		return model.Errorf(model.ExitUsage, "unknown operation %q for site %q", operation, name)
 	}
+	var fields []string
+	for _, c := range changes {
+		if c.Op == op.Name {
+			fields = append(fields, c.Field)
+		}
+	}
 	if format == "json" {
+		if len(fields) > 0 {
+			return writeJSON(struct {
+				*model.Operation
+				Overlay []string `json:"overlay"`
+			}{op, fields})
+		}
 		return writeJSON(op)
 	}
 	basePath := idx.DefaultBasePath
@@ -143,16 +155,24 @@ func describeOp(name, operation, format string) error {
 		basePath = env.BasePath
 	}
 	w := tabwriter.NewWriter(os.Stdout, 0, 4, 2, ' ', 0)
-	if _, err := fmt.Fprintf(w, "%s %s%s\n\nPARAMETERS\nNAME\tIN\tTYPE\tREQUIRED\tENUM\tDESCRIPTION\n", op.Method, strings.TrimRight(basePath, "/"), op.Path); err != nil {
+	if _, err := fmt.Fprintf(w, "%s %s%s\n", op.Method, strings.TrimRight(basePath, "/"), op.Path); err != nil {
+		return localError(err)
+	}
+	if line := overlayLine(fields); line != "" {
+		if _, err := fmt.Fprintf(w, "%s\n", line); err != nil {
+			return localError(err)
+		}
+	}
+	if _, err := fmt.Fprint(w, "\nPARAMETERS\nNAME\tIN\tTYPE\tREQUIRED\tENUM\tDESCRIPTION\n"); err != nil {
 		return localError(err)
 	}
 	for _, p := range op.Params {
-		if _, err := fmt.Fprintf(w, "%s\t%s\t%s\t%t\t%s\t%s\n", p.Name, p.In, p.Type, p.Required, strings.Join(p.Enum, ","), p.Desc); err != nil {
+		if _, err := fmt.Fprintf(w, "%s\t%s\t%s\t%t\t%s\t%s\n", paramLabel(p, fields), p.In, p.Type, p.Required, strings.Join(p.Enum, ","), p.Desc); err != nil {
 			return localError(err)
 		}
 	}
 	if op.Body != nil {
-		if _, err := fmt.Fprintf(w, "\nBODY %s\n", op.Body.Type); err != nil {
+		if _, err := fmt.Fprintf(w, "\nBODY %s%s\n", op.Body.Type, bodyMark(fields)); err != nil {
 			return localError(err)
 		}
 		if err := printFields(w, op.Body.Schema.Fields); err != nil {
@@ -183,4 +203,42 @@ func printFields(w *tabwriter.Writer, fields []model.Field) error {
 		}
 	}
 	return nil
+}
+
+// overlayLine lists the name/summary/output fields an overlay changed, in
+// order of appearance.
+func overlayLine(fields []string) string {
+	var shown []string
+	for _, f := range fields {
+		if f == "name" || f == "summary" || f == "output" {
+			shown = append(shown, f)
+		}
+	}
+	if len(shown) == 0 {
+		return ""
+	}
+	return "OVERLAY: " + strings.Join(shown, ", ")
+}
+
+// paramLabel marks a parameter hidden or changed/added by an overlay.
+func paramLabel(p model.Param, fields []string) string {
+	if p.Hidden {
+		return p.Name + " (hidden)"
+	}
+	prefix := "params." + p.In + "." + p.Name + "."
+	for _, f := range fields {
+		if strings.HasPrefix(f, prefix) {
+			return p.Name + " (overlay)"
+		}
+	}
+	return p.Name
+}
+
+func bodyMark(fields []string) string {
+	for _, f := range fields {
+		if f == "body" {
+			return " (overlay)"
+		}
+	}
+	return ""
 }
