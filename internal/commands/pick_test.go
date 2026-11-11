@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync/atomic"
 	"testing"
 
@@ -161,4 +162,36 @@ func TestOutputModes(t *testing.T) {
 	code, _, errOut := runIO(t, "demo", "items", "-o", "xml")
 	assert.Eq(t, 2, code)
 	assert.Contains(t, errOut, "auto, json, raw, yaml or table")
+}
+
+func TestPickProjection(t *testing.T) {
+	setupPick(t)
+	t.Run("table columns follow the projection", func(t *testing.T) {
+		code, out, errOut := runIO(t, "demo", "items", "--pick", "data.items.*.id,name", "-o", "table")
+		assert.Eq(t, 0, code, errOut)
+		lines := strings.Split(strings.TrimRight(out, "\n"), "\n")
+		assert.Eq(t, []string{"id", "name"}, strings.Fields(lines[0]))
+		assert.Eq(t, 3, len(lines))
+		code, out, errOut = runIO(t, "demo", "items", "--pick", "data.items.*.name,id", "-o", "table")
+		assert.Eq(t, 0, code, errOut)
+		assert.Eq(t, []string{"name", "id"}, strings.Fields(strings.SplitN(out, "\n", 2)[0]))
+	})
+	t.Run("root object projection", func(t *testing.T) {
+		code, out, errOut := runIO(t, "demo", "items", "--pick", "z,a,missing", "-o", "json")
+		assert.Eq(t, 0, code, errOut)
+		assert.Contains(t, out, `"z": 1`)
+		assert.Contains(t, out, `"missing": null`)
+		assert.True(t, strings.Index(out, `"z"`) < strings.Index(out, `"a"`))
+	})
+	t.Run("non-object elements fall back to JSON", func(t *testing.T) {
+		code, out, errOut := runIO(t, "demo", "items", "--pick", "data.*.id,name", "-o", "table")
+		assert.Eq(t, 0, code, errOut)
+		assert.Contains(t, errOut, "note: value has no table form; printing JSON")
+		assert.Contains(t, out, "null")
+	})
+	t.Run("projection needs an object", func(t *testing.T) {
+		code, _, errOut := runIO(t, "demo", "items", "--pick", "data.title.a,b")
+		assert.Eq(t, 7, code)
+		assert.Contains(t, errOut, "needs an object")
+	})
 }

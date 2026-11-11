@@ -116,6 +116,27 @@ apic pet list-users --env dev --auth me  # 只对这一次请求覆盖
 apic auth status pet                     # 查看登录状态（不会输出 token）
 ```
 
+### 按环境指定认证
+
+环境可以用 `envs.<env>.auth` 声明自己使用的认证：
+
+```yaml
+    envs:
+      build:   {base_url: http://127.0.0.1:18090, auth: build}
+      factory: {base_url: http://127.0.0.1:18080, auth: factory, protect: true}
+```
+
+- **选择优先级**：`--auth`，然后 `envs.<env>.auth`，然后 `apic use` 保存的认证，最后 `default_auth`。
+- **建议**：多环境站点给每个环境都写 `auth`。没写的环境会使用保存的认证；写了的环境不会被保存的选择改走，凭证不会发到别的环境。
+- **显示**：`apic use` 输出 `auth: factory (env)` 这样的来源后缀；保存的 `--auth` 被环境声明遮蔽时，stderr 给出提示。
+- **旧缓存**：环境加上 `auth` 后改用新认证名的 token 缓存；旧名字下残留的缓存不再被使用，可用 `apic auth logout <site> --env <env> --auth <旧名>` 清除。
+- **dry-run 缺变量**：凭证字段（`token`、`password`、`value`、`exec.command`、`exec.env`、`login.body`）里未设的 `${env:NAME}` 不再让 `--dry-run` 失败，退出 0，并为每个变量在 stderr 写一行 `warning: dry-run: NAME is not set; a real call would fail`。
+- **dry-run 的限制**：
+  - 真实调用和 `apic auth status` 仍然失败；其他字段（如 `username`、`allow_methods`）缺变量也仍然失败。
+  - 占位显示为 `***`（头的值）、URL 编码形式（query）或 `<exec-token>`/`<login-token>`，是否缺变量以警告为准。
+  - dry-run 不执行 `exec` 命令，也不写、不删 token 缓存。
+- **401 作废**：重发后仍是 401 时，`login`/`exec` 认证缓存的 token 会被删除，`apic auth status` 显示 logged out，下次调用重新取 token。
+
 ### 简单定义
 
 接口不多的服务（Jenkins、小工具服务），写一个简短的 YAML 就行，不用写 swagger：
@@ -132,7 +153,13 @@ operations:
   job-log:
     get: /job/{name}/{build}/consoleText
     output: raw
+  job-list:
+    get: /api/json
+    params:
+      - {name: view, in: query, enum: [all, failed, running]}   # 允许的取值
 ```
+
+`enum` 按字符串比较：数字和布尔值按类型转换（`1.0` 得到 `"1"`，`0x10` 得到 `"16"`），需要原样比较时请加引号；列表不能为空，元素不能为空字符串或重复。
 
 ```bash
 apic site add jenkins --def ~/.config/apic/defs/jenkins.yaml --base-url https://ci.example.com
@@ -231,6 +258,7 @@ apic pet list-users -o yaml
 
 - **路径写法**：路径用点号分段，段可以是键名、数组下标（`items.0`）或 `*`。
 - **`*` 的规则**：`*` 表示每个元素，缺少的字段填 `null`，空数组得到 `[]`。
+- **投影**：最后一段可写成 `a,b`，按给出的顺序取这几个键组成对象，缺少的键为 `null`；如 `--pick data.items.*.id,name -o table` 输出两列。投影只作用于对象，数组要先写 `.*`。
 - **生效范围**：`--pick`、`-o yaml`、`-o table` 只对 2xx 响应生效，其他响应原样输出。
 
 ## 生成给 AI agent 用的 skill

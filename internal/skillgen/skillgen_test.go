@@ -221,3 +221,19 @@ func TestSkillMultipartHints(t *testing.T) {
 		assert.NotContains(t, text, "dbg")
 	})
 }
+
+func TestSkillRenderEnvAuth(t *testing.T) {
+	site := baseSite()
+	site.Envs["dev"] = model.Env{BaseURL: "https://dev-secret.example", Auth: "lg"}
+	site.Envs["prod"] = model.Env{BaseURL: "https://base-secret.example", Protect: true, Auth: "ro" + injection}
+	data, err := skillgen.Render(skillgen.Input{Site: "pet", Index: &model.Index{}, Cfg: site, Name: "apic-pet", MaxOps: 60})
+	assert.Require(t, assert.NoError(t, err))
+	text := string(data)
+	assert.Contains(t, text, "- dev; auth lg\n")
+	assert.Contains(t, text, "An explicit --auth overrides the environment's auth; pass --env explicitly.")
+	assert.Contains(t, text, "--pick data.items.*.id,name")
+	// the declared auth name is neutralized like every other config text.
+	assert.NotContains(t, text, "<!-- evil")
+	assert.Eq(t, 1, strings.Count(text, "<!--"))
+	assert.Eq(t, 1, strings.Count(text, "-->"))
+}

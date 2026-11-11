@@ -55,10 +55,8 @@ func listAuths(name string) error {
 	if err != nil {
 		return err
 	}
-	current := d.State.Selections[name].Auth
-	if current == "" {
-		current = site.DefaultAuth
-	}
+	saved := d.State.Selections[name]
+	current, _ := site.EffectiveAuth(firstOf(saved.Env, site.DefaultEnv), saved.Auth, "")
 	names := make([]string, 0, len(site.Auths))
 	for n := range site.Auths {
 		names = append(names, n)

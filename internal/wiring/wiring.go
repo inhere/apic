@@ -125,21 +125,27 @@ func transportOf(c *http.Client) http.RoundTripper {
 
 // Selection holds the resolved environment and authentication names. Auth is
 // empty when the site has no authentication selected (treated as none).
-type Selection struct{ Env, Auth string }
+// AuthSource is one of the model.AuthFrom* values, empty when Auth is empty.
+type Selection struct{ Env, Auth, AuthSource string }
 
 // Resolve picks the environment and authentication for a site. Precedence is
-// the per-call value, then state.yaml, then the site's default_env/default_auth.
+// the per-call value, then state.yaml, then the site's default_env; the auth
+// follows Site.EffectiveAuth (flag, env-declared, saved, default_auth).
 func Resolve(d *Deps, name string, site *model.Site, envFlag, authFlag string) (Selection, error) {
 	saved := d.State.Selections[name]
-	sel := Selection{Env: firstNonEmpty(envFlag, saved.Env, site.DefaultEnv), Auth: firstNonEmpty(authFlag, saved.Auth, site.DefaultAuth)}
+	sel := Selection{Env: firstNonEmpty(envFlag, saved.Env, site.DefaultEnv)}
 	if sel.Env == "" {
 		return Selection{}, model.Errorf(model.ExitLocal, "site %q has no environment selected; use --env or set default_env", name)
 	}
 	if _, ok := site.Envs[sel.Env]; !ok {
 		return Selection{}, model.Errorf(model.ExitLocal, "site %q has no environment %q", name, sel.Env)
 	}
+	sel.Auth, sel.AuthSource = site.EffectiveAuth(sel.Env, saved.Auth, authFlag)
 	if sel.Auth != "" {
 		if _, ok := site.Auths[sel.Auth]; !ok {
+			if sel.AuthSource == model.AuthFromEnv {
+				return Selection{}, model.Errorf(model.ExitLocal, "site %q env %q: no auth %q", name, sel.Env, sel.Auth)
+			}
 			return Selection{}, model.Errorf(model.ExitLocal, "site %q has no auth %q", name, sel.Auth)
 		}
 	}
@@ -164,12 +170,13 @@ type CallFlags struct {
 }
 
 // NewCall builds the request and assembles the request.Call for one operation
-// (op is nil for a raw path call).
-func NewCall(d *Deps, name string, site *model.Site, idx *model.Index, op *model.Operation, in request.Input, sel Selection, fl CallFlags) (*request.Call, error) {
+// (op is nil for a raw path call). The second result lists the unset credential
+// variables tolerated under dry-run; the caller reports them.
+func NewCall(d *Deps, name string, site *model.Site, idx *model.Index, op *model.Operation, in request.Input, sel Selection, fl CallFlags) (*request.Call, []string, error) {
 	env := site.Envs[sel.Env]
 	client, err := request.NewClient(env)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	call := &request.Call{
 		Env: env, Redactor: d.Redactor, Client: client,
@@ -178,17 +185,26 @@ func NewCall(d *Deps, name string, site *model.Site, idx *model.Index, op *model
 	}
 	// The identity is resolved before the request is built so that every secret
 	// it expands is registered before any error message can be printed.
+	var missing []string
 	if sel.Auth != "" {
-		provider, spec, err := newProvider(d, name, site, sel, client, fl.Verbose)
+		var (
+			provider *auth.Provider
+			spec     model.AuthSpec
+		)
+		if fl.DryRun {
+			provider, spec, missing, err = newProviderDryRun(d, name, site, sel, client, fl.Verbose)
+		} else {
+			provider, spec, err = newProvider(d, name, site, sel, client, fl.Verbose)
+		}
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		call.Auth, call.Authorizer = spec, provider
 	}
 	if call.Prepared, err = request.Build(op, in, env, basePath(env, idx)); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	return call, nil
+	return call, missing, nil
 }
 
 // NewAuth builds the provider for the selected authentication, for the auth commands.
@@ -212,6 +228,21 @@ func newProvider(d *Deps, name string, site *model.Site, sel Selection, client *
 		return nil, model.AuthSpec{}, err
 	}
 	return provider, spec, nil
+}
+
+// newProviderDryRun is newProvider with unset credential variables tolerated.
+func newProviderDryRun(d *Deps, name string, site *model.Site, sel Selection, client *http.Client, verbose io.Writer) (*auth.Provider, model.AuthSpec, []string, error) {
+	spec, missing, err := config.ResolveAuthDryRun(site, sel.Auth, d.Env, d.Secrets)
+	if err != nil {
+		return nil, model.AuthSpec{}, nil, err
+	}
+	provider, err := auth.New(name, sel.Env, sel.Auth, spec, site.Envs[sel.Env], auth.Deps{
+		Client: client, Secrets: d.Secrets, Redactor: d.Redactor, CacheDir: filepath.Join(d.Dir, "cache"), ConfigDir: d.Dir, Verbose: verbose,
+	})
+	if err != nil {
+		return nil, model.AuthSpec{}, nil, err
+	}
+	return provider, spec, missing, nil
 }
 
 // basePath prefers the environment override, then the definition's default,

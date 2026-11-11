@@ -46,9 +46,14 @@ func (sc *siteContext) run(op *model.Operation, in request.Input) error {
 	if g.Verbose {
 		flags.Verbose = os.Stderr
 	}
-	call, err := wiring.NewCall(sc.d, sc.name, sc.site, sc.idx, op, in, sel, flags)
+	call, missing, err := wiring.NewCall(sc.d, sc.name, sc.site, sc.idx, op, in, sel, flags)
 	if err != nil {
 		return sc.redactErr(err)
+	}
+	for _, name := range missing {
+		if err := writeString(os.Stderr, fmt.Sprintf("warning: dry-run: %s is not set; a real call would fail\n", name)); err != nil {
+			return err
+		}
 	}
 	resp, err := request.Execute(context.Background(), *call)
 	if err != nil {

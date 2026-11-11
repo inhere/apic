@@ -34,7 +34,7 @@ func useSite(name string, g *globalOpts) error {
 	}
 	saved := d.State.Selections[name]
 	if g.Env == "" && g.Auth == "" {
-		return printSelection(d, name, firstOf(saved.Env, site.DefaultEnv), firstOf(saved.Auth, site.DefaultAuth))
+		return printSelection(d, name, site, saved)
 	}
 	next := saved
 	if g.Env != "" {
@@ -53,7 +53,17 @@ func useSite(name string, g *globalOpts) error {
 	if err := config.SaveState(d.Dir, d.State); err != nil {
 		return err
 	}
-	return printSelection(d, name, firstOf(next.Env, site.DefaultEnv), firstOf(next.Auth, site.DefaultAuth))
+	if g.Auth != "" {
+		// The note follows the environment as it is after saving.
+		env := firstOf(next.Env, site.DefaultEnv)
+		if declared := site.Envs[env].Auth; declared != "" && declared != next.Auth {
+			note := fmt.Sprintf("note: env %q declares auth %q; the saved auth applies only to environments without one\n", env, declared)
+			if err := writeString(os.Stderr, d.Redactor.Redact(note)); err != nil {
+				return err
+			}
+		}
+	}
+	return printSelection(d, name, site, next)
 }
 
 func firstOf(values ...string) string {
@@ -65,6 +75,11 @@ func firstOf(values ...string) string {
 	return "(none)"
 }
 
-func printSelection(d *wiring.Deps, site, env, auth string) error {
-	return writeString(os.Stdout, d.Redactor.Redact(fmt.Sprintf("site: %s\nenv: %s\nauth: %s\n", site, env, auth)))
+func printSelection(d *wiring.Deps, name string, site *model.Site, saved config.Selection) error {
+	env := firstOf(saved.Env, site.DefaultEnv)
+	auth := "(none)"
+	if n, source := site.EffectiveAuth(env, saved.Auth, ""); n != "" {
+		auth = fmt.Sprintf("%s (%s)", n, source)
+	}
+	return writeString(os.Stdout, d.Redactor.Redact(fmt.Sprintf("site: %s\nenv: %s\nauth: %s\n", name, env, auth)))
 }

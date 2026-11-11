@@ -112,7 +112,7 @@ func writeUsage(b *strings.Builder, site string) {
 	fmt.Fprintf(b, "## How to call\n\n")
 	fmt.Fprintf(b, "- Operation: `apic %s <op> --param value` (use `apic desc %s <op>` to see parameters).\n", site, site)
 	fmt.Fprintf(b, "- Raw path: `apic %s -X GET /path`.\n", site)
-	b.WriteString("- Filter the response: `--pick a.b` (post-process, see `apic --help`).\n")
+	b.WriteString("- Filter the response: `--pick a.b` (post-process, see `apic --help`); pick columns with `--pick data.items.*.id,name`.\n")
 	b.WriteString("- Preview without sending: `--dry-run`.\n")
 	b.WriteString("- Output format: `-o json`.\n")
 	b.WriteString("- `-F name=@path` and `-d @file` read and send a local file: use them only with paths the user explicitly gave. `-f` values are always text.\n\n")
@@ -143,6 +143,9 @@ func writeEnvs(b *strings.Builder, cfg *model.Site) {
 		if cfg.Envs[n].Protect {
 			line += " - protected: writes need `--yes`"
 		}
+		if a := cfg.Envs[n].Auth; a != "" {
+			line += "; auth " + Sanitize(a, fieldMax)
+		}
 		b.WriteString(line + "\n")
 	}
 	b.WriteString("\n")
@@ -155,7 +158,7 @@ func writeEnvs(b *strings.Builder, cfg *model.Site) {
 		b.WriteString("Auth identities: none configured.\n\n")
 		return
 	}
-	b.WriteString("Auth identities (`--auth <name>`):\n\n")
+	b.WriteString("Auth identities (`--auth <name>`). An explicit --auth overrides the environment's auth; pass --env explicitly.\n\n")
 	for _, n := range auths {
 		a := cfg.Auths[n]
 		line := fmt.Sprintf("- %s: type %s", Sanitize(n, fieldMax), Sanitize(a.Type, fieldMax))

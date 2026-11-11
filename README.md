@@ -123,6 +123,41 @@ apic pet list-users --env dev --auth me  # override for one request
 apic auth status pet                     # login state (token never printed)
 ```
 
+### Authentication per environment
+
+An environment can declare the authentication it uses with `envs.<env>.auth`:
+
+```yaml
+    envs:
+      build:   {base_url: http://127.0.0.1:18090, auth: build}
+      factory: {base_url: http://127.0.0.1:18080, auth: factory, protect: true}
+```
+
+The auth for a call is chosen by `--auth`, then `envs.<env>.auth`, then the
+auth saved by `apic use`, then `default_auth`. Give every environment of a
+multi-environment site its own `auth`: an environment without one uses the
+saved auth, so a saved choice can never send another environment's credential
+to an environment that declares its own. `apic use` prints the source as
+`auth: factory (env)` and a note when a saved `--auth` is shadowed by the
+environment. Adding `auth` to an environment switches it to the token cache of
+that auth name; a cache left under the old name is no longer used and can be
+removed with `apic auth logout <site> --env <env> --auth <old-name>`.
+
+Other behaviours of authentication:
+
+- **Dry run with unset variables**: `--dry-run` tolerates `${env:NAME}` that is
+  not set in credential fields (`token`, `password`, `value`, `exec.command`,
+  `exec.env`, `login.body`); it exits 0 and prints one stderr line
+  `warning: dry-run: NAME is not set; a real call would fail` per variable.
+  Real calls and `apic auth status` still fail. The placeholder is shown as
+  `***` (header values), URL-encoded in a query string, or as `<exec-token>` /
+  `<login-token>`; the warning is the source of truth. Other fields (such as
+  `username` or `allow_methods`) with unset variables still fail. A dry run
+  never runs `exec` commands and never writes or removes a token cache.
+- **401 drops the token**: when the retried request is still 401, the cached
+  token of a `login`/`exec` auth is deleted, so `apic auth status` shows
+  logged out and the next call logs in again.
+
 ### Simple definitions
 
 For services with only a few endpoints (Jenkins, small internal tools),
@@ -140,7 +175,15 @@ operations:
   job-log:
     get: /job/{name}/{build}/consoleText
     output: raw
+  job-list:
+    get: /api/json
+    params:
+      - {name: view, in: query, enum: [all, failed, running]}   # allowed values
 ```
+
+`enum` values are compared as strings: numbers and booleans are converted by
+type (`1.0` becomes `"1"`, `0x10` becomes `"16"`), so quote a value to keep it
+as written. The list must be non-empty with distinct, non-empty values.
 
 ```bash
 apic site add jenkins --def ~/.config/apic/defs/jenkins.yaml --base-url https://ci.example.com
@@ -271,7 +314,11 @@ apic pet list-users -o yaml
 ```
 
 A path is dot separated: keys, array indexes (`items.0`) and `*` (every element;
-missing fields become `null`, an empty array gives `[]`). `--pick`, `-o yaml`
+missing fields become `null`, an empty array gives `[]`). The last segment may
+be a projection `a,b`, which builds an object from those keys in the given
+order (missing keys are `null`): `--pick data.items.*.id,name -o table` prints
+two columns. A projection needs an object; put `.*` before it for arrays.
+`--pick`, `-o yaml`
 and `-o table` apply to 2xx responses only; other responses print unchanged.
 
 ## Generating a skill for AI agents
