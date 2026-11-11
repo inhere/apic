@@ -2,6 +2,7 @@ package spec_test
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -79,7 +80,7 @@ func TestOpenAPIBodyMedia(t *testing.T) {
 	for _, tc := range []struct{ media, want string }{
 		{"application/json", "json"},
 		{"application/x-www-form-urlencoded", "form"},
-		{"multipart/form-data", "form"},
+		{"multipart/form-data", "multipart"},
 		{"application/xml", "xml"},
 		{"application/octet-stream", "raw"},
 		{"application/problem+json", "raw"},
@@ -291,6 +292,180 @@ func TestCacheSimpleNoCache(t *testing.T) {
 	assert.Eq(t, "two", idx.Ops[0].Name)
 	_, err = os.Stat(filepath.Join(dir, "cache", "specs", "demo.index.json"))
 	assert.True(t, errors.Is(err, os.ErrNotExist))
+}
+
+func TestBodyType(t *testing.T) {
+	t.Setenv("APIC_CONFIG_DIR", t.TempDir())
+	for _, tc := range []struct {
+		name, media, want string
+	}{
+		{"multipart-parameters", "multipart/form-data; boundary=demo", "multipart"},
+		{"urlencoded", "application/x-www-form-urlencoded; charset=utf-8", "form"},
+		{"json-wins", "application/json,multipart/form-data", "json"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			file := filepath.Join(dir, "spec.json")
+			content := fmt.Sprintf(`{%q:{"schema":{"type":"object"}}}`, tc.media)
+			if tc.name == "json-wins" {
+				content = `{"application/json":{"schema":{"type":"object"}},"multipart/form-data":{"schema":{"type":"object"}}}`
+			}
+			doc := fmt.Sprintf(`{"openapi":"3.0.3","info":{"title":"Demo","version":"1"},"paths":{"/pet":{"post":{"requestBody":{"content":%s},"responses":{"200":{"description":"OK"}}}}}}`, content)
+			assert.Require(t, assert.NoError(t, os.WriteFile(file, []byte(doc), 0600)))
+			idx, err := (spec.OpenAPILoader{}).Load(context.Background(), model.Source{File: file}, dir)
+			assert.Require(t, assert.NoError(t, err))
+			assert.Eq(t, tc.want, idx.Ops[0].Body.Type)
+		})
+	}
+}
+
+func TestSimpleBodyType(t *testing.T) {
+	dir := t.TempDir()
+	file := filepath.Join(dir, "simple.yaml")
+	content := []byte("operations:\n  demo:\n    get: /demo\n    body: {type: yaml}\n")
+	assert.Require(t, assert.NoError(t, os.WriteFile(file, content, 0600)))
+	_, err := (spec.SimpleLoader{}).Load(context.Background(), model.Source{File: file}, dir)
+	assert.Require(t, assert.Error(t, err))
+	assert.Eq(t, file+" operation demo: body.type must be one of json, form, multipart, xml, raw", err.Error())
+	assertCode(t, err, model.ExitLocal)
+}
+
+func TestIndexVersion(t *testing.T) {
+	raw := []byte(`{"openapi":"3.0.3","info":{"title":"Demo","version":"1"},"paths":{"/upload":{"post":{"requestBody":{"content":{"multipart/form-data":{"schema":{"type":"object"}}}},"responses":{"200":{"description":"OK"}}}}}}`)
+
+	t.Run("cache-only rebuilds without fetching", func(t *testing.T) {
+		dir := t.TempDir()
+		var calls atomic.Int32
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			calls.Add(1)
+			w.Header().Set("ETag", `"v1"`)
+			_, _ = w.Write(raw)
+		}))
+		defer server.Close()
+		src := model.Source{URL: server.URL, TTL: time.Hour}
+		_, _, err := spec.Index(context.Background(), "demo", src, dir, spec.IndexOptions{Client: server.Client()})
+		assert.Require(t, assert.NoError(t, err))
+		fetchedAt := makeLegacyCache(t, dir)
+
+		idx, warnings, err := spec.Index(context.Background(), "demo", src, dir, spec.IndexOptions{CacheOnly: true, Client: server.Client()})
+		assert.Require(t, assert.NoError(t, err))
+		assert.Eq(t, 0, len(warnings))
+		assert.Eq(t, "multipart", idx.Ops[0].Body.Type)
+		assert.Eq(t, int32(1), calls.Load())
+		assertCacheMeta(t, dir, ``, fetchedAt, 2)
+	})
+
+	t.Run("expired rebuilt cache fetches without etag", func(t *testing.T) {
+		dir := t.TempDir()
+		var calls atomic.Int32
+		var requestETag string
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			calls.Add(1)
+			requestETag = r.Header.Get("If-None-Match")
+			_, _ = w.Write(raw)
+		}))
+		defer server.Close()
+		src := model.Source{URL: server.URL, TTL: time.Nanosecond}
+		_, _, err := spec.Index(context.Background(), "demo", src, dir, spec.IndexOptions{Client: server.Client()})
+		assert.Require(t, assert.NoError(t, err))
+		makeLegacyCache(t, dir)
+		idx, _, err := spec.Index(context.Background(), "demo", src, dir, spec.IndexOptions{Client: server.Client()})
+		assert.Require(t, assert.NoError(t, err))
+		assert.Eq(t, "multipart", idx.Ops[0].Body.Type)
+		assert.Eq(t, int32(2), calls.Load())
+		assert.Eq(t, "", requestETag)
+	})
+
+	t.Run("current cache does not rebuild", func(t *testing.T) {
+		dir := t.TempDir()
+		var calls atomic.Int32
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			calls.Add(1)
+			_, _ = w.Write(raw)
+		}))
+		defer server.Close()
+		src := model.Source{URL: server.URL, TTL: time.Hour}
+		_, _, err := spec.Index(context.Background(), "demo", src, dir, spec.IndexOptions{Client: server.Client()})
+		assert.Require(t, assert.NoError(t, err))
+		assert.Require(t, assert.NoError(t, os.WriteFile(filepath.Join(dir, "cache", "specs", "demo.raw"), []byte("not an OpenAPI document"), 0600)))
+		idx, _, err := spec.Index(context.Background(), "demo", src, dir, spec.IndexOptions{CacheOnly: true, Client: server.Client()})
+		assert.Require(t, assert.NoError(t, err))
+		assert.Eq(t, "multipart", idx.Ops[0].Body.Type)
+		assert.Eq(t, int32(1), calls.Load())
+	})
+
+	t.Run("missing raw is not a cache", func(t *testing.T) {
+		for _, cacheOnly := range []bool{true, false} {
+			t.Run(fmt.Sprintf("cache-only-%t", cacheOnly), func(t *testing.T) {
+				dir := t.TempDir()
+				var calls atomic.Int32
+				var requestETag string
+				server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					calls.Add(1)
+					requestETag = r.Header.Get("If-None-Match")
+					_, _ = w.Write(raw)
+				}))
+				defer server.Close()
+				src := model.Source{URL: server.URL, TTL: time.Hour}
+				_, _, err := spec.Index(context.Background(), "demo", src, dir, spec.IndexOptions{Client: server.Client()})
+				assert.Require(t, assert.NoError(t, err))
+				makeLegacyCache(t, dir)
+				assert.Require(t, assert.NoError(t, os.Remove(filepath.Join(dir, "cache", "specs", "demo.raw"))))
+				idx, _, err := spec.Index(context.Background(), "demo", src, dir, spec.IndexOptions{CacheOnly: cacheOnly, Client: server.Client()})
+				if cacheOnly {
+					assertCode(t, err, model.ExitLocal)
+					assert.Eq(t, int32(1), calls.Load())
+					return
+				}
+				assert.Require(t, assert.NoError(t, err))
+				assert.Eq(t, "multipart", idx.Ops[0].Body.Type)
+				assert.Eq(t, int32(2), calls.Load())
+				assert.Eq(t, "", requestETag)
+			})
+		}
+	})
+}
+
+func makeLegacyCache(t *testing.T, dir string) time.Time {
+	t.Helper()
+	base := filepath.Join(dir, "cache", "specs", "demo")
+	indexData, err := os.ReadFile(base + ".index.json")
+	assert.Require(t, assert.NoError(t, err))
+	var index model.Index
+	assert.Require(t, assert.NoError(t, json.Unmarshal(indexData, &index)))
+	index.Ops[0].Body.Type = "form"
+	indexData, err = json.Marshal(index)
+	assert.Require(t, assert.NoError(t, err))
+	assert.Require(t, assert.NoError(t, os.WriteFile(base+".index.json", indexData, 0600)))
+
+	metaData, err := os.ReadFile(base + ".meta.json")
+	assert.Require(t, assert.NoError(t, err))
+	var meta map[string]any
+	assert.Require(t, assert.NoError(t, json.Unmarshal(metaData, &meta)))
+	fetchedAt, ok := meta["fetched_at"].(string)
+	assert.Require(t, assert.True(t, ok))
+	delete(meta, "index_version")
+	metaData, err = json.Marshal(meta)
+	assert.Require(t, assert.NoError(t, err))
+	assert.Require(t, assert.NoError(t, os.WriteFile(base+".meta.json", metaData, 0600)))
+	fetched, err := time.Parse(time.RFC3339Nano, fetchedAt)
+	assert.Require(t, assert.NoError(t, err))
+	return fetched
+}
+
+func assertCacheMeta(t *testing.T, dir, etag string, fetchedAt time.Time, version int) {
+	t.Helper()
+	data, err := os.ReadFile(filepath.Join(dir, "cache", "specs", "demo.meta.json"))
+	assert.Require(t, assert.NoError(t, err))
+	var meta struct {
+		ETag         string    `json:"etag"`
+		FetchedAt    time.Time `json:"fetched_at"`
+		IndexVersion int       `json:"index_version"`
+	}
+	assert.Require(t, assert.NoError(t, json.Unmarshal(data, &meta)))
+	assert.Eq(t, etag, meta.ETag)
+	assert.Eq(t, fetchedAt, meta.FetchedAt)
+	assert.Eq(t, version, meta.IndexVersion)
 }
 
 func TestRealSpec(t *testing.T) {

@@ -121,6 +121,8 @@ func (SimpleLoader) Load(ctx context.Context, src model.Source, dir string) (*mo
 			bodyType := raw.Body.Type
 			if strings.TrimSpace(bodyType) == "" {
 				bodyType = "json"
+			} else if bodyType != "json" && bodyType != "form" && bodyType != "multipart" && bodyType != "xml" && bodyType != "raw" {
+				return nil, model.Errorf(model.ExitLocal, "%s operation %s: body.type must be one of json, form, multipart, xml, raw", file, name)
 			}
 			op.Body = &model.BodySpec{Type: bodyType}
 		}

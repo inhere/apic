@@ -206,8 +206,10 @@ func bodyType(media string) string {
 	switch {
 	case media == "application/json", strings.HasPrefix(media, "application/json;"):
 		return "json"
-	case media == "application/x-www-form-urlencoded", strings.HasPrefix(media, "application/x-www-form-urlencoded;"), media == "multipart/form-data", strings.HasPrefix(media, "multipart/form-data;"):
+	case media == "application/x-www-form-urlencoded", strings.HasPrefix(media, "application/x-www-form-urlencoded;"):
 		return "form"
+	case media == "multipart/form-data", strings.HasPrefix(media, "multipart/form-data;"):
+		return "multipart"
 	case strings.Contains(media, "xml"):
 		return "xml"
 	default:
@@ -227,10 +229,12 @@ func sortedMedia(content openapi3.Content) []string {
 				return 0
 			case "form":
 				return 1
-			case "xml":
+			case "multipart":
 				return 2
-			default:
+			case "xml":
 				return 3
+			default:
+				return 4
 			}
 		}
 		if rank(keys[i]) != rank(keys[j]) {
