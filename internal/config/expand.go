@@ -43,7 +43,9 @@ func ResolveAuth(site *model.Site, name string, env *Env, sec *model.Secrets) (m
 	plainFields := []*string{&auth.Type, &auth.Username, &auth.In, &auth.Name,
 		&auth.Login.Method, &auth.Login.Path, &auth.Login.Token.From, &auth.Login.Token.Path,
 		&auth.Login.Expires.From, &auth.Login.Expires.Path, &auth.Login.Apply.Header,
-		&auth.Login.Apply.Query, &auth.Login.Apply.Value}
+		&auth.Login.Apply.Query, &auth.Login.Apply.Value, &auth.Apply.Header,
+		&auth.Apply.Query, &auth.Apply.Value, &auth.Exec.Timeout, &auth.Exec.Format,
+		&auth.Exec.TTL, &auth.Exec.Token.Path, &auth.Exec.Expires.Path}
 	for _, group := range []struct {
 		fields []*string
 		sec    *model.Secrets
@@ -64,6 +66,26 @@ func ResolveAuth(site *model.Site, name string, env *Env, sec *model.Secrets) (m
 				return model.AuthSpec{}, err
 			}
 			auth.AllowMethods[i] = v
+		}
+	}
+	if auth.Exec.Command != nil {
+		auth.Exec.Command = append([]string(nil), auth.Exec.Command...)
+		for i, arg := range auth.Exec.Command {
+			v, err := Expand(arg, env, sec)
+			if err != nil {
+				return model.AuthSpec{}, err
+			}
+			auth.Exec.Command[i] = v
+		}
+	}
+	if auth.Exec.Env != nil {
+		auth.Exec.Env = make(map[string]string, len(auth.Exec.Env))
+		for key, value := range site.Auths[name].Exec.Env {
+			v, err := Expand(value, env, sec)
+			if err != nil {
+				return model.AuthSpec{}, err
+			}
+			auth.Exec.Env[key] = v
 		}
 	}
 	if auth.Login.Body != nil {

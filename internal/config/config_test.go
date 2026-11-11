@@ -240,7 +240,6 @@ func TestStateRoundTrip(t *testing.T) {
 		assert.Eq(t, os.FileMode(0600), info.Mode().Perm())
 	}
 }
-
 func TestCheckPlaintext(t *testing.T) {
 	testDir(t)
 	cfg := &model.Config{Sites: map[string]*model.Site{"pet": {Auths: map[string]model.AuthSpec{
@@ -250,4 +249,115 @@ func TestCheckPlaintext(t *testing.T) {
 	assert.Eq(t, 2, len(warnings))
 	assert.True(t, strings.Contains(strings.Join(warnings, " "), "secretKey"))
 	assert.False(t, strings.Contains(strings.Join(warnings, " "), "literal token"))
+}
+
+func TestExecSpecValidation(t *testing.T) {
+	for _, tc := range []struct {
+		name, auth string
+		want       string
+	}{
+		{"unknown exec key", "type: exec\n        exec:\n          command: [demo]\n          apply: {header: Authorization}\n", "unknown exec key \"apply\""},
+		{"zero ttl", "type: exec\n        exec:\n          command: [demo]\n          ttl: 0\n", "auth \"sso\""},
+		{"json token path", "type: exec\n        exec:\n          command: [demo]\n          format: json\n", "token.path"},
+		{"empty command", "type: exec\n        exec:\n          command: []\n", "command"},
+		{"login not allowed", "type: exec\n        login: {method: POST}\n        exec: {command: [demo]}\n", "cannot contain login"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := testDir(t)
+			putFile(t, filepath.Join(dir, "config.yaml"), "sites:\n  pet:\n    source: {type: simple}\n    auths:\n      sso:\n        "+tc.auth)
+			_, err := config.Load(dir)
+			localError(t, err, "pet", tc.want)
+		})
+	}
+}
+
+func TestExecSpecAndLoginConfigLoad(t *testing.T) {
+	dir := testDir(t)
+	putFile(t, filepath.Join(dir, "config.yaml"), `sites:
+  pet:
+    source: {type: simple}
+    auths:
+      sso:
+        type: exec
+        exec:
+          command: [demo]
+          timeout: 30s
+          format: json
+          token: {path: data.token}
+          expires: {path: expires_in}
+          ttl: 1h
+        apply: {header: Authorization, value: "Bearer {token}"}
+      login:
+        type: login
+        login:
+          method: POST
+          path: /login
+          apply: {header: X-Token, value: "Token {token}"}
+        token: {from: body, path: data.token}
+        expires: {from: body, path: data.expires}
+        apply: {header: Authorization, value: "Bearer {token}"}
+`)
+	cfg, err := config.Load(dir)
+	assert.Require(t, assert.NoErr(t, err))
+	exec := cfg.Sites["pet"].Auths["sso"]
+	assert.Eq(t, []string{"demo"}, exec.Exec.Command)
+	assert.Eq(t, "json", exec.Exec.Format)
+	assert.Eq(t, "data.token", exec.Exec.Token.Path)
+	assert.Eq(t, "Authorization", exec.Apply.Header)
+	login := cfg.Sites["pet"].Auths["login"]
+	assert.Eq(t, "data.token", login.Login.Token.Path)
+	assert.Eq(t, "data.expires", login.Login.Expires.Path)
+	assert.Eq(t, "X-Token", login.Login.Apply.Header)
+}
+
+func TestResolveAuthExec(t *testing.T) {
+	env := &config.Env{Values: map[string]string{
+		"EXEC_BIN": "secret-bin", "AUDIENCE": "audience-secret", "CLIENT_SECRET": "client-secret",
+		"TIMEOUT": "20s", "FORMAT": "json", "TTL": "5m", "TOKEN_PATH": "data.token",
+		"EXPIRES_PATH": "expires_in", "HEADER": "Authorization", "APPLY_VALUE": "Bearer {token}",
+	}}
+	originalCommand := []string{"${env:EXEC_BIN}", "literal-token", "--audience", "${env:AUDIENCE}"}
+	originalEnv := map[string]string{"CLIENT_SECRET": "${env:CLIENT_SECRET}", "MODE": "literal-mode"}
+	site := &model.Site{Auths: map[string]model.AuthSpec{
+		"sso": {Type: "exec", Exec: model.ExecSpec{
+			Command: originalCommand,
+			Env:     originalEnv,
+			Timeout: "${env:TIMEOUT}", Format: "${env:FORMAT}", TTL: "${env:TTL}",
+			Token:   model.ValueFrom{Path: "${env:TOKEN_PATH}"},
+			Expires: model.ValueFrom{Path: "${env:EXPIRES_PATH}"},
+		}, Apply: model.ApplySpec{Header: "${env:HEADER}", Value: "${env:APPLY_VALUE}"}},
+	}}
+	var sec model.Secrets
+	resolved, err := config.ResolveAuth(site, "sso", env, &sec)
+	assert.Require(t, assert.NoErr(t, err))
+	assert.Eq(t, []string{"${env:EXEC_BIN}", "literal-token", "--audience", "${env:AUDIENCE}"}, site.Auths["sso"].Exec.Command)
+	assert.Eq(t, originalEnv, site.Auths["sso"].Exec.Env)
+	assert.Eq(t, []string{"secret-bin", "literal-token", "--audience", "audience-secret"}, resolved.Exec.Command)
+	assert.Eq(t, map[string]string{"CLIENT_SECRET": "client-secret", "MODE": "literal-mode"}, resolved.Exec.Env)
+	assert.Eq(t, "20s", resolved.Exec.Timeout)
+	assert.Eq(t, "json", resolved.Exec.Format)
+	assert.Eq(t, "5m", resolved.Exec.TTL)
+	assert.Eq(t, "data.token", resolved.Exec.Token.Path)
+	assert.Eq(t, "expires_in", resolved.Exec.Expires.Path)
+	assert.Eq(t, "Authorization", resolved.Apply.Header)
+	red := &model.Redactor{Secrets: &sec}
+	assert.Eq(t, "***", red.Redact("secret-bin"))
+	assert.Eq(t, "***", red.Redact("client-secret"))
+	assert.Eq(t, "literal-token", red.Redact("literal-token"))
+	assert.Eq(t, "--audience", red.Redact("--audience"))
+}
+
+func TestCheckExec(t *testing.T) {
+	cfg := &model.Config{Sites: map[string]*model.Site{"pet": {Auths: map[string]model.AuthSpec{
+		"sso": {Type: "exec", Exec: model.ExecSpec{Command: []string{"corp-sso"}, Env: map[string]string{
+			"CLIENT_SECRET": "plain-client-secret", "SAFE": "${env:SAFE}",
+		}}},
+		"hidden": {Type: "exec", Exec: model.ExecSpec{Command: []string{"${env:EXEC_BIN}"}}},
+	}}}}
+	warnings := config.Check(cfg)
+	joined := strings.Join(warnings, "\n")
+	assert.Contains(t, joined, "site pet auth sso: runs corp-sso")
+	assert.Contains(t, joined, "site pet auth hidden: runs ***")
+	assert.Contains(t, joined, "site pet auth sso exec.env.CLIENT_SECRET: plaintext credential")
+	assert.NotContains(t, joined, "SAFE: plaintext credential")
 }

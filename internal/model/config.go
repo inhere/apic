@@ -46,6 +46,19 @@ type AuthSpec struct {
 	Value        string    `yaml:"value,omitempty"`
 	AllowMethods []string  `yaml:"allow_methods,omitempty"`
 	Login        LoginSpec `yaml:"login,omitempty"`
+	Exec         ExecSpec  `yaml:"exec,omitempty"`
+	Apply        ApplySpec `yaml:"apply,omitempty"`
+}
+
+// ExecSpec describes an external command that supplies an authentication token.
+type ExecSpec struct {
+	Command []string          `yaml:"command"`
+	Env     map[string]string `yaml:"env,omitempty"`
+	Timeout string            `yaml:"timeout,omitempty"`
+	Format  string            `yaml:"format,omitempty"`
+	Token   ValueFrom         `yaml:"token,omitempty"`
+	Expires ValueFrom         `yaml:"expires,omitempty"`
+	TTL     string            `yaml:"ttl,omitempty"`
 }
 
 // LoginSpec describes a login request and how its response supplies credentials.
