@@ -157,8 +157,8 @@ func TestAuthLoginCacheReuse(t *testing.T) {
 	if r2.Header.Get("Authorization") != r.Header.Get("Authorization") || ls.hits.Load() != 1 {
 		t.Fatalf("hits=%d auth=%q", ls.hits.Load(), r2.Header.Get("Authorization"))
 	}
-	if ok, exp := p2.Status(); !ok || exp.IsZero() {
-		t.Fatalf("status = %v %v", ok, exp)
+	if si := p2.Status(); !si.LoggedIn || si.ExpiresAt.IsZero() {
+		t.Fatalf("status = %+v", si)
 	}
 	if runtime.GOOS != "windows" {
 		st, err := os.Stat(filepath.Join(dir, "tokens", "site.dev.main.json"))
@@ -175,7 +175,7 @@ func TestAuthLoginCacheReuse(t *testing.T) {
 	if err := p2.Logout(); err != nil {
 		t.Fatalf("second logout: %v", err)
 	}
-	if ok, _ := p2.Status(); ok {
+	if p2.Status().LoggedIn {
 		t.Fatal("still logged in")
 	}
 }
@@ -300,8 +300,8 @@ func TestAuthLoginHeaderTokenQueryApply(t *testing.T) {
 	if r.URL.Query().Get("access_token") != "hdr-token" {
 		t.Fatalf("url = %v", r.URL)
 	}
-	if ok, exp := p.Status(); !ok || !exp.IsZero() {
-		t.Fatalf("status = %v %v", ok, exp)
+	if si := p.Status(); !si.LoggedIn || !si.ExpiresAt.IsZero() {
+		t.Fatalf("status = %+v", si)
 	}
 }
 

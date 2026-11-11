@@ -37,6 +37,9 @@ func (p *Provider) cachePath() string {
 // fingerprint binds a cached token to base_url and the login definition.
 // json.Marshal sorts map keys, so the encoding is stable.
 func (p *Provider) fingerprint() string {
+	if p.spec.Type == "exec" {
+		return p.execFingerprint()
+	}
 	raw, _ := json.Marshal(p.spec.Login)
 	sum := sha256.Sum256([]byte(p.env.BaseURL + "\n" + string(raw)))
 	return hex.EncodeToString(sum[:])
@@ -45,6 +48,9 @@ func (p *Provider) fingerprint() string {
 func (p *Provider) valid(e cacheEntry) bool {
 	if e.Token == "" || e.Fingerprint != p.fingerprint() {
 		return false
+	}
+	if p.spec.Type == "exec" && e.ExpiresAt.IsZero() {
+		return false // exec tokens are cached only with a known expiry
 	}
 	return e.ExpiresAt.IsZero() || p.deps.Now().Add(expirySkew).Before(e.ExpiresAt)
 }
@@ -116,12 +122,18 @@ func (p *Provider) Logout() error {
 	return nil
 }
 
-// Status reports whether a valid cached token exists and when it expires
-// (zero time: no expiry known).
-func (p *Provider) Status() (loggedIn bool, expiresAt time.Time) {
-	e, ok := p.readCache()
-	if !ok {
-		return false, time.Time{}
+// StatusInfo describes the cached token of one identity.
+type StatusInfo struct {
+	LoggedIn  bool
+	ExpiresAt time.Time // zero: no expiry known
+	Cacheable bool      // false: the token is never cached (exec without expiry or ttl)
+}
+
+// Status reports whether a valid cached token exists and when it expires.
+func (p *Provider) Status() StatusInfo {
+	info := StatusInfo{Cacheable: p.spec.Type != "exec" || p.execCacheable()}
+	if e, ok := p.readCache(); ok {
+		info.LoggedIn, info.ExpiresAt = true, e.ExpiresAt
 	}
-	return true, e.ExpiresAt
+	return info
 }

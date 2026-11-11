@@ -151,6 +151,9 @@ func (t *authTarget) login() error {
 		}
 		return err
 	}
+	if t.spec.Type == "exec" && !t.provider.Status().Cacheable {
+		return t.print(t.label() + ": token obtained; not cached, the command runs on every request\n")
+	}
 	return t.print(t.label() + ": logged in\n")
 }
 
@@ -162,13 +165,17 @@ func (t *authTarget) logout() error {
 }
 
 func (t *authTarget) status() error {
-	if t.spec.Type != "login" {
+	if t.spec.Type != "login" && t.spec.Type != "exec" {
 		return t.print(t.label() + ": no login state\n")
 	}
-	in, exp := t.provider.Status()
-	if !in {
+	info := t.provider.Status()
+	if !info.Cacheable {
+		return t.print(t.label() + ": not cached (no expiry)\n")
+	}
+	if !info.LoggedIn {
 		return t.print(t.label() + ": logged out\n")
 	}
+	exp := info.ExpiresAt
 	if exp.IsZero() {
 		return t.print(t.label() + ": logged in, no known expiry\n")
 	}

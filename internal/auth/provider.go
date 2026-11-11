@@ -17,12 +17,13 @@ import (
 
 // Deps are the collaborators injected by the wiring layer.
 type Deps struct {
-	Client   *http.Client // login requests; must not follow redirects
-	Secrets  *model.Secrets
-	Redactor *model.Redactor
-	CacheDir string
-	Verbose  io.Writer // nil disables
-	Now      func() time.Time
+	Client    *http.Client // login requests; must not follow redirects
+	Secrets   *model.Secrets
+	Redactor  *model.Redactor
+	CacheDir  string
+	ConfigDir string    // working directory of exec commands; base for relative command paths
+	Verbose   io.Writer // nil disables
+	Now       func() time.Time
 }
 
 // Provider applies one auth identity to requests.
@@ -40,7 +41,7 @@ type Provider struct {
 // New builds a Provider. spec must already be variable-expanded.
 func New(site, envName, authName string, spec model.AuthSpec, env model.Env, deps Deps) (*Provider, error) {
 	switch spec.Type {
-	case "none", "bearer", "basic", "apikey", "login":
+	case "none", "bearer", "basic", "apikey", "login", "exec":
 	default:
 		return nil, model.Errorf(model.ExitLocal, "auth %q: unknown type %q", authName, spec.Type)
 	}
@@ -61,6 +62,8 @@ func (p *Provider) Apply(ctx context.Context, req *http.Request, dry bool) error
 	switch p.spec.Type {
 	case "login":
 		return p.applyLogin(ctx, req, dry)
+	case "exec":
+		return p.applyExec(ctx, req, dry)
 	default:
 		return p.applyStatic(req)
 	}
@@ -68,13 +71,16 @@ func (p *Provider) Apply(ctx context.Context, req *http.Request, dry bool) error
 
 // Refresh discards credentials and obtains new ones where possible.
 func (p *Provider) Refresh(ctx context.Context) error {
-	if p.spec.Type != "login" {
+	if p.spec.Type != "login" && p.spec.Type != "exec" {
 		return model.ErrNoRefresh
 	}
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	p.token, p.expires = "", time.Time{}
 	p.removeCache()
+	if p.spec.Type == "exec" {
+		return p.doExec(ctx)
+	}
 	return p.doLogin(ctx)
 }
 
@@ -82,9 +88,8 @@ func (p *Provider) addSecret(v string) { p.deps.Secrets.Add(v) }
 
 func (p *Provider) redact(s string) string { return p.deps.Redactor.Redact(s) }
 
-// injectToken sets the token on req per spec.Login.Apply.
-func (p *Provider) injectToken(req *http.Request, token string) {
-	ap := p.spec.Login.Apply
+// injectToken sets the token on req per ap (login: spec.Login.Apply, exec: spec.Apply).
+func (p *Provider) injectToken(req *http.Request, token string, ap model.ApplySpec) {
 	value := ap.Value
 	if value == "" {
 		value = "Bearer {token}"

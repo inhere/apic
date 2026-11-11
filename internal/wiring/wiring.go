@@ -206,7 +206,7 @@ func newProvider(d *Deps, name string, site *model.Site, sel Selection, client *
 		return nil, model.AuthSpec{}, err
 	}
 	provider, err := auth.New(name, sel.Env, sel.Auth, spec, site.Envs[sel.Env], auth.Deps{
-		Client: client, Secrets: d.Secrets, Redactor: d.Redactor, CacheDir: filepath.Join(d.Dir, "cache"), Verbose: verbose,
+		Client: client, Secrets: d.Secrets, Redactor: d.Redactor, CacheDir: filepath.Join(d.Dir, "cache"), ConfigDir: d.Dir, Verbose: verbose,
 	})
 	if err != nil {
 		return nil, model.AuthSpec{}, err

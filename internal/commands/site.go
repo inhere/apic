@@ -364,6 +364,26 @@ func maskBody(value any, secrets *model.Secrets, short *[]string) any {
 	}
 }
 
+// maskExec hides argv: only command[0] is shown, followed by "***". Env values
+// are masked like other credential fields. The input is not modified.
+func maskExec(x model.ExecSpec, secrets *model.Secrets, short *[]string) model.ExecSpec {
+	if len(x.Command) > 0 {
+		if strings.Contains(x.Command[0], "${env:") {
+			x.Command = []string{"***"}
+		} else {
+			x.Command = []string{x.Command[0], "***"}
+		}
+	}
+	if x.Env != nil {
+		env := make(map[string]string, len(x.Env))
+		for key, value := range x.Env {
+			env[key] = maskCredential(value, secrets, short)
+		}
+		x.Env = env
+	}
+	return x
+}
+
 func maskedSite(site *model.Site, secrets *model.Secrets, short *[]string) *model.Site {
 	copy := *site
 	copy.Auths = make(map[string]model.AuthSpec, len(site.Auths))
@@ -375,6 +395,7 @@ func maskedSite(site *model.Site, secrets *model.Secrets, short *[]string) *mode
 		if auth.Login.Body != nil {
 			auth.Login.Body = maskBody(auth.Login.Body, secrets, short).(map[string]any)
 		}
+		auth.Exec = maskExec(auth.Exec, secrets, short)
 		copy.Auths[name] = auth
 	}
 	return &copy

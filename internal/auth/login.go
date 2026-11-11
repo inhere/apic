@@ -22,23 +22,23 @@ func (p *Provider) applyLogin(ctx context.Context, req *http.Request, dry bool) 
 	defer p.mu.Unlock()
 	if p.token != "" && (p.expires.IsZero() || p.deps.Now().Add(expirySkew).Before(p.expires)) {
 		p.addSecret(p.token)
-		p.injectToken(req, p.token)
+		p.injectToken(req, p.token, p.spec.Login.Apply)
 		return nil
 	}
 	if e, ok := p.readCache(); ok {
 		p.token, p.expires = e.Token, e.ExpiresAt
 		p.addSecret(p.token)
-		p.injectToken(req, p.token)
+		p.injectToken(req, p.token, p.spec.Login.Apply)
 		return nil
 	}
 	if dry {
-		p.injectToken(req, dryToken)
+		p.injectToken(req, dryToken, p.spec.Login.Apply)
 		return nil
 	}
 	if err := p.doLogin(ctx); err != nil {
 		return err
 	}
-	p.injectToken(req, p.token)
+	p.injectToken(req, p.token, p.spec.Login.Apply)
 	return nil
 }
 
