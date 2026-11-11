@@ -5,6 +5,10 @@ on:
     tags:
       - v*
 
+# The default token of a new repository is read-only; creating a release needs write.
+permissions:
+  contents: write
+
 jobs:
   release:
     name: Release new version
@@ -44,7 +48,11 @@ jobs:
         run: |
           curl https://github.com/gookit/gitw/releases/latest/download/chlog-linux-amd64 -L -o /usr/local/bin/chlog
           chmod a+x /usr/local/bin/chlog
-          chlog -c .github/changelog.yml -o changelog.md prev last
+          # The first release has no previous tag; start from the root commit then.
+          # chlog only prints an error in that case, so check the file exists.
+          prev=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || git rev-list --max-parents=0 HEAD)
+          chlog -c .github/changelog.yml -o changelog.md "$prev" "$RELEASE_TAG"
+          test -s changelog.md
 
       # https://github.com/softprops/action-gh-release
       - name: Create release and upload assets
