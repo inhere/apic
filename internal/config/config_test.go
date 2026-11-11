@@ -69,7 +69,7 @@ func TestLoadSitesFilesAndErrors(t *testing.T) {
 	for _, tc := range []struct{ name, main, siteFile, siteContent, match, site string }{
 		{"site file", "", "sites/pet.yaml", "source: {type: simple, file: defs/pet.yaml}\n", "", "pet"},
 		{"duplicate", "sites:\n  pet: {}\n", "sites/pet.yaml", "source: {type: simple}\n", "duplicate", "pet"},
-		{"reserved", "sites:\n  auth: {}\n", "", "", "reserved", "auth"},
+
 		{"invalid", "", "sites/Bad_name.yaml", "source: {type: simple}\n", "invalid", "Bad_name"},
 		{"invalid main", "sites:\n  bad_name: {}\n", "", "", "invalid", "bad_name"},
 		{"bad version", "version: 2\n", "", "", "version", "<config>"},
@@ -93,6 +93,28 @@ func TestLoadSitesFilesAndErrors(t *testing.T) {
 			assert.Require(t, assert.NoErr(t, err))
 			assert.Eq(t, filepath.Join(dir, "sites", "pet.yaml"), cfg.Sites["pet"].Origin)
 			assert.Eq(t, filepath.Join(dir, "defs", "pet.yaml"), cfg.Sites["pet"].Source.File)
+		})
+	}
+}
+
+func TestReservedSiteSkipped(t *testing.T) {
+	for _, tc := range []struct {
+		name, main, siteFile string
+	}{
+		{"config.yaml", "version: 1\nsites:\n  skill: {source: {type: simple, file: defs/skill.yaml}}\n  pet: {source: {type: simple, file: defs/pet.yaml}}\n", ""},
+		{"sites/skill.yaml", "version: 1\nsites:\n  pet: {source: {type: simple, file: defs/pet.yaml}}\n", "source: {type: simple, file: defs/skill.yaml}\n"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := testDir(t)
+			putFile(t, filepath.Join(dir, "config.yaml"), tc.main)
+			if tc.siteFile != "" {
+				putFile(t, filepath.Join(dir, tc.name), tc.siteFile)
+			}
+			cfg, err := config.Load(dir)
+			assert.Require(t, assert.NoErr(t, err))
+			assert.True(t, cfg.Sites["skill"] == nil)
+			assert.True(t, cfg.Sites["pet"] != nil)
+			assert.Eq(t, []string{`site "skill" uses a reserved name and is skipped; rename it`}, cfg.Warnings)
 		})
 	}
 }

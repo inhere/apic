@@ -233,6 +233,46 @@ func TestCacheRefresh(t *testing.T) {
 	assert.True(t, strings.Contains(err.Error(), "run apic site refresh demo"))
 }
 
+func TestIndexCacheOnly(t *testing.T) {
+	t.Run("stale cache does not fetch", func(t *testing.T) {
+		dir := t.TempDir()
+		raw, err := os.ReadFile(filepath.Join("testdata", "min-v3.json"))
+		assert.Require(t, assert.NoError(t, err))
+		var calls atomic.Int32
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			calls.Add(1)
+			_, _ = w.Write(raw)
+		}))
+		defer server.Close()
+		src := model.Source{URL: server.URL, TTL: time.Nanosecond}
+		first, _, err := spec.Index(context.Background(), "demo", src, dir, spec.IndexOptions{Client: server.Client()})
+		assert.Require(t, assert.NoError(t, err))
+		cached, _, err := spec.Index(context.Background(), "demo", src, dir, spec.IndexOptions{CacheOnly: true, Client: server.Client()})
+		assert.Require(t, assert.NoError(t, err))
+		assert.True(t, reflect.DeepEqual(first, cached))
+		assert.Eq(t, int32(1), calls.Load())
+	})
+
+	t.Run("missing cache does not fetch", func(t *testing.T) {
+		var calls atomic.Int32
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { calls.Add(1) }))
+		defer server.Close()
+		_, _, err := spec.Index(context.Background(), "demo", model.Source{URL: server.URL}, t.TempDir(), spec.IndexOptions{CacheOnly: true, Client: server.Client()})
+		assertCode(t, err, model.ExitLocal)
+		assert.Contains(t, err.Error(), "no cached index for demo")
+		assert.Eq(t, int32(0), calls.Load())
+	})
+
+	t.Run("simple source still loads", func(t *testing.T) {
+		dir := t.TempDir()
+		file := filepath.Join(dir, "demo.yaml")
+		assert.Require(t, assert.NoError(t, os.WriteFile(file, []byte("operations:\n  one: {get: /one}\n"), 0600)))
+		idx, _, err := spec.Index(context.Background(), "demo", model.Source{Type: "simple", File: file}, dir, spec.IndexOptions{CacheOnly: true})
+		assert.Require(t, assert.NoError(t, err))
+		assert.Eq(t, "one", idx.Ops[0].Name)
+	})
+}
+
 func TestCacheSimpleNoCache(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("APIC_CONFIG_DIR", dir)

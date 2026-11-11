@@ -15,9 +15,10 @@ import (
 
 // IndexOptions configures cache refresh and the caller-owned fetch transport.
 type IndexOptions struct {
-	Refresh bool
-	Client  *http.Client
-	Apply   func(*http.Request) error
+	Refresh   bool
+	CacheOnly bool
+	Client    *http.Client
+	Apply     func(*http.Request) error
 }
 
 type cacheMeta struct {
@@ -39,6 +40,12 @@ func Index(ctx context.Context, site string, src model.Source, dir string, opt I
 	var old model.Index
 	oldData, readErr := os.ReadFile(indexFile)
 	haveOld := readErr == nil && json.Unmarshal(oldData, &old) == nil
+	if opt.CacheOnly {
+		if haveOld {
+			return &old, nil, nil
+		}
+		return nil, nil, model.Errorf(model.ExitLocal, "no cached index for %s", site)
+	}
 	var meta cacheMeta
 	if data, err := os.ReadFile(metaFile); err == nil {
 		_ = json.Unmarshal(data, &meta)

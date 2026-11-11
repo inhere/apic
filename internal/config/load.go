@@ -13,7 +13,7 @@ import (
 
 var reservedNames = map[string]bool{
 	"site": true, "ops": true, "desc": true, "use": true, "auth": true,
-	"link": true, "config": true, "help": true, "version": true,
+	"link": true, "config": true, "help": true, "version": true, "skill": true,
 }
 
 // Load merges the optional config.yaml and one-site-per-file sites/*.yaml.
@@ -33,6 +33,11 @@ func Load(dir string) (*model.Config, error) {
 		return nil, model.Errorf(model.ExitLocal, "%s site <config>: unsupported version %d", mainFile, cfg.Version)
 	}
 	for name, site := range cfg.Sites {
+		if reservedNames[name] {
+			cfg.Warnings = append(cfg.Warnings, fmt.Sprintf("site %q uses a reserved name and is skipped; rename it", name))
+			delete(cfg.Sites, name)
+			continue
+		}
 		if err := validateSite(dir, mainFile, name, site); err != nil {
 			return nil, err
 		}
@@ -43,6 +48,10 @@ func Load(dir string) (*model.Config, error) {
 	}
 	for _, file := range files {
 		name := strings.TrimSuffix(filepath.Base(file), ".yaml")
+		if reservedNames[name] {
+			cfg.Warnings = append(cfg.Warnings, fmt.Sprintf("site %q uses a reserved name and is skipped; rename it", name))
+			continue
+		}
 		if err := validateName(file, name); err != nil {
 			return nil, err
 		}
