@@ -84,6 +84,15 @@ func (p *Provider) Refresh(ctx context.Context) error {
 	return p.doLogin(ctx)
 }
 
+// Invalidate drops the in-memory and cached token of a login or exec identity
+// (Logout takes the lock itself); static identities have nothing to drop.
+func (p *Provider) Invalidate() error {
+	if p.spec.Type != "login" && p.spec.Type != "exec" {
+		return nil
+	}
+	return p.Logout()
+}
+
 func (p *Provider) addSecret(v string) { p.deps.Secrets.Add(v) }
 
 func (p *Provider) redact(s string) string { return p.deps.Redactor.Redact(s) }

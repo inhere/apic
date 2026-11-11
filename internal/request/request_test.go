@@ -32,6 +32,8 @@ type fakeAuth struct {
 	applies  int
 	refreshN int
 	token    string
+	invalN   int
+	invalErr error
 }
 
 func (f *fakeAuth) Apply(_ context.Context, req *http.Request, _ bool) error {
@@ -48,6 +50,8 @@ func (f *fakeAuth) Apply(_ context.Context, req *http.Request, _ bool) error {
 }
 
 func (f *fakeAuth) Refresh(context.Context) error { f.refreshN++; return f.refresh }
+
+func (f *fakeAuth) Invalidate() error { f.invalN++; return f.invalErr }
 
 func rd(s ...string) *model.Redactor {
 	sec := &model.Secrets{}
@@ -320,4 +324,69 @@ func TestInsecureWarnsAndCAFile(t *testing.T) {
 
 	_, err = NewClient(model.Env{CAFile: filepath.Join(t.TempDir(), "missing")})
 	assert.Eq(t, model.ExitLocal, code(err))
+}
+
+func TestExecute401Invalidate(t *testing.T) {
+	newSrv := func(codes ...int) (*httptest.Server, *int32) {
+		var n int32
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			i := int(atomic.AddInt32(&n, 1)) - 1
+			if i >= len(codes) {
+				i = len(codes) - 1
+			}
+			w.WriteHeader(codes[i])
+		}))
+		t.Cleanup(srv.Close)
+		return srv, &n
+	}
+
+	t.Run("retry still 401 invalidates once", func(t *testing.T) {
+		srv, n := newSrv(401)
+		fa := &fakeAuth{secrets: &model.Secrets{}, token: "tok-12345"}
+		resp, err := Execute(context.Background(), call(t, srv, prep(t, srv.URL, "GET", "/a", Input{}), fa, nil))
+		assert.NoErr(t, err)
+		assert.Eq(t, 401, resp.Status)
+		assert.Eq(t, int32(2), atomic.LoadInt32(n))
+		assert.Eq(t, 1, fa.refreshN)
+		assert.Eq(t, 1, fa.invalN)
+	})
+
+	t.Run("retry succeeds does not invalidate", func(t *testing.T) {
+		srv, _ := newSrv(401, 200)
+		fa := &fakeAuth{secrets: &model.Secrets{}, token: "tok-12345"}
+		resp, err := Execute(context.Background(), call(t, srv, prep(t, srv.URL, "GET", "/a", Input{}), fa, nil))
+		assert.NoErr(t, err)
+		assert.Eq(t, 200, resp.Status)
+		assert.Eq(t, 0, fa.invalN)
+	})
+
+	t.Run("static auth without refresh does not invalidate", func(t *testing.T) {
+		srv, _ := newSrv(401)
+		fa := &fakeAuth{secrets: &model.Secrets{}, token: "tok-12345", refresh: model.ErrNoRefresh}
+		resp, err := Execute(context.Background(), call(t, srv, prep(t, srv.URL, "GET", "/a", Input{}), fa, nil))
+		assert.NoErr(t, err)
+		assert.Eq(t, 401, resp.Status)
+		assert.Eq(t, 0, fa.invalN)
+	})
+
+	t.Run("invalidate error warns redacted and keeps response", func(t *testing.T) {
+		srv, _ := newSrv(401)
+		sec := &model.Secrets{}
+		fa := &fakeAuth{secrets: sec, token: "tok-12345", invalErr: errors.New("remove cache for tok-12345 failed")}
+		c := call(t, srv, prep(t, srv.URL, "GET", "/a", Input{}), fa, &model.Redactor{Secrets: sec})
+		var stderr bytes.Buffer
+		c.Stderr = &stderr
+		resp, err := Execute(context.Background(), c)
+		assert.NoErr(t, err)
+		assert.Eq(t, 401, resp.Status)
+		assert.Eq(t, "warning: drop cached token: remove cache for *** failed\n", stderr.String())
+	})
+
+	t.Run("invalidate error without stderr is silent", func(t *testing.T) {
+		srv, _ := newSrv(401)
+		fa := &fakeAuth{secrets: &model.Secrets{}, token: "tok-12345", invalErr: errors.New("boom")}
+		resp, err := Execute(context.Background(), call(t, srv, prep(t, srv.URL, "GET", "/a", Input{}), fa, nil))
+		assert.NoErr(t, err)
+		assert.Eq(t, 401, resp.Status)
+	})
 }

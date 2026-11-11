@@ -17,6 +17,8 @@ import (
 type Authorizer interface {
 	Apply(ctx context.Context, req *http.Request, dry bool) error
 	Refresh(ctx context.Context) error
+	// Invalidate drops cached credentials after a retried request is still rejected.
+	Invalidate() error
 }
 
 // Call describes one request execution.
@@ -129,7 +131,17 @@ func Execute(ctx context.Context, c Call) (*Response, error) {
 	if err := c.Authorizer.Apply(ctx, req, false); err != nil {
 		return nil, c.wrapErr(err)
 	}
-	return c.send(client, req)
+	resp, err = c.send(client, req)
+	if err != nil {
+		return nil, err
+	}
+	// Still 401 after a fresh credential: do not keep the useless token cached.
+	if resp.Status == http.StatusUnauthorized {
+		if err := c.Authorizer.Invalidate(); err != nil && c.Stderr != nil {
+			fmt.Fprintln(c.Stderr, "warning: "+c.Redactor.Redact("drop cached token: "+err.Error()))
+		}
+	}
+	return resp, nil
 }
 
 func (c *Call) send(client *http.Client, req *http.Request) (*Response, error) {

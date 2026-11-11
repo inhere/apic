@@ -533,3 +533,70 @@ func TestCheckBatchArgs(t *testing.T) {
 		assert.NoErr(t, checkBatchArgs("a.cmd", nil))
 	})
 }
+
+func TestInvalidate(t *testing.T) {
+	ctx := context.Background()
+	// other is a different identity sharing the same cache dir.
+	newOther := func(t *testing.T, spec model.AuthSpec, e model.Env, d Deps) *Provider {
+		t.Helper()
+		p, err := New("site", "dev", "other", spec, e, d)
+		assert.NoErr(t, err)
+		return p
+	}
+
+	t.Run("exec with ttl drops cache and keeps other identity", func(t *testing.T) {
+		f := newExecFixture(t)
+		spec := f.spec("token=tok-inv-1")
+		spec.Exec.TTL = "30m"
+		p := f.provider(t, spec)
+		other := newOther(t, spec, model.Env{BaseURL: "http://example.test"}, f.deps)
+		_, err := apply(t, p)
+		assert.NoErr(t, err)
+		_, err = apply(t, other)
+		assert.NoErr(t, err)
+		_, ok := p.readCache()
+		assert.True(t, ok)
+
+		assert.NoErr(t, p.Invalidate())
+		_, ok = p.readCache()
+		assert.False(t, ok)
+		_, statErr := os.Stat(p.cachePath())
+		assert.True(t, os.IsNotExist(statErr))
+		assert.False(t, p.Status().LoggedIn)
+		_, ok = other.readCache()
+		assert.True(t, ok)
+		// Dropping twice is not an error.
+		assert.NoErr(t, p.Invalidate())
+	})
+
+	t.Run("exec without ttl has nothing cached and succeeds", func(t *testing.T) {
+		f := newExecFixture(t)
+		p := f.provider(t, f.spec("token=tok-inv-2"))
+		_, err := apply(t, p)
+		assert.NoErr(t, err)
+		assert.NoErr(t, p.Invalidate())
+	})
+
+	t.Run("login drops cache and keeps other identity", func(t *testing.T) {
+		ls := newLoginServer(t)
+		d := deps(t, t.TempDir())
+		env := model.Env{BaseURL: ls.URL}
+		p := mustNew(t, "dev", loginSpec("pw-secret"), env, d)
+		other := newOther(t, loginSpec("pw-secret"), env, d)
+		assert.NoErr(t, p.Apply(ctx, newReq(t), false))
+		assert.NoErr(t, other.Apply(ctx, newReq(t), false))
+		assert.True(t, p.Status().LoggedIn)
+
+		assert.NoErr(t, p.Invalidate())
+		assert.False(t, p.Status().LoggedIn)
+		assert.True(t, other.Status().LoggedIn)
+	})
+
+	t.Run("static auth is a no-op", func(t *testing.T) {
+		d := deps(t, t.TempDir())
+		p := mustNew(t, "dev", model.AuthSpec{Type: "bearer", Token: "tok-123"}, model.Env{}, d)
+		assert.NoErr(t, p.Invalidate())
+		_, statErr := os.Stat(filepath.Join(d.CacheDir, "tokens"))
+		assert.True(t, os.IsNotExist(statErr))
+	})
+}
