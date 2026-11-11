@@ -40,6 +40,9 @@ secrets masked everywhere.
   `-o table` reformat it, keeping numbers and field order intact
 - `apic skill pet` generates a `SKILL.md` that teaches an AI agent to use the site
 - `exec` authentication: get the token from an external command (vault, SSO CLI…)
+- Overlays: rename, hide or fix operations and parameters in `overlays/<site>.yaml`
+  without touching the upstream spec
+- File uploads: `-F file=@./a.xlsx` sends `multipart/form-data`
 
 ## Install
 
@@ -166,6 +169,73 @@ Its argv never appears in any output. On a 401 the command runs again once.
 > commands, so treat them like scripts and do not import untrusted site files.
 > On Windows the 0600 permission of the token cache is not enforced, and
 > arguments with `& | < > ^ % ! "` are refused when the command is a `.bat`/`.cmd`.
+
+## Fixing a definition with an overlay
+
+When a generated command is awkward or a spec is wrong, write
+`<config dir>/overlays/<site>.yaml` instead of editing the spec. It survives
+`site refresh` and applies to calls, `ops`, `desc`, completion and `apic skill`.
+
+```yaml
+operations:
+  "POST /back/cfg/get":          # METHOD /path, as in the PATH column of `apic ops`
+    name: cfg-get
+    summary: get the print config
+  "POST /back/cfg/delete":
+    hide: true
+  users-list:                    # or the generated operation name
+    output: raw
+    body: multipart              # json | form | multipart | xml | raw
+    params:
+      status: {required: true, enum: [active, banned]}
+      debug:  {hide: true}       # no option; -p debug=... is refused
+      tenant: {in: header, required: true}   # new parameter: in is query or header
+```
+
+```bash
+apic overlay init pet          # writes overlays/pet.yaml with one empty entry per operation
+apic overlay init pet --stdout
+apic config check              # reports overlay errors and keys that match nothing
+```
+
+- A key that matches no operation only warns. A structural error (bad value,
+  name clash, hiding a path or required parameter, a new `Authorization`/`Cookie`/
+  `Host`/`Content-*` header…) makes every command of that site exit 1, except
+  `site refresh/show/rm` and `overlay init`; `config check` then exits 1 too.
+- `desc` marks changed fields with `(overlay)` and hidden parameters with
+  `(hidden)`; `desc -o json` adds an `overlay` array.
+- **`hide` is not access control**: a hidden operation can still be called by
+  its raw path, and a hidden parameter can still be sent with `-H` or a raw
+  path call. Use `protect` and `allow_methods` for dangerous endpoints.
+- `overlay` is a reserved name: a site called `overlay` is skipped with a warning.
+
+## File uploads (multipart)
+
+```bash
+apic pet import-users -F file=@./users.xlsx -F type=user
+apic pet upload -F 'file=@./a.bin;type=application/zip;filename=report.zip'
+apic pet upload -F 'file=@"./a;b.bin";filename=ab.bin'   # quote paths containing ; or "
+apic pet -X POST /upload -F file=@./a.txt                # raw path call
+```
+
+- Operations whose spec says `multipart/form-data` are sent as multipart; for
+  others fix the body type with an overlay (`body: multipart`).
+- Only `-F name=@path` reads a file. `-F name=value` and `-f name=value` are
+  text (`-f name=@x` sends the literal `@x`). `-F name=@-` and curl's
+  `-F name=<file` are not supported; a value starting with `<` is sent as text.
+- `type` must be a plain `type/subtype` (no parameters); otherwise it is guessed
+  from a builtin extension table, falling back to `application/octet-stream`.
+  Names and file names cannot contain `"`, `\` or control characters — pass
+  `;filename=` when the path's last segment has them.
+- `-F` cannot be combined with `-d`, `-f` or a `Content-Type` header. On a
+  multipart operation, `-d` alone needs `-H 'Content-Type: ...'`.
+- Only regular files are read, after the write-protection check, and the whole
+  body is limited to 64 MiB (use curl for larger uploads). `--dry-run` prints a
+  curl command that sends the same parts; `-v` lists the parts without content.
+
+> **Security:** `-F name=@path` and `-d @file` send local files. `-d @file` is
+> read before the write-protection check and has no size limit. On Windows a UNC
+> path (`\\host\share\...`) authenticates to that host when it is opened.
 
 ## Shortcut commands
 

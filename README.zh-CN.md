@@ -31,6 +31,8 @@
 - `--pick data.items.*.id` 从 JSON 响应里取值；`-o yaml`、`-o table` 换格式，数字和字段顺序保持原样
 - `apic skill pet` 生成 `SKILL.md`，教 AI agent 使用这个站点
 - `exec` 认证：从外部命令（vault、SSO 工具等）取 token
+- overlay：在 `overlays/<site>.yaml` 里给操作改名、隐藏操作、修正参数，不用改上游 spec
+- 文件上传：`-F file=@./a.xlsx` 发送 `multipart/form-data`
 
 ## 安装
 
@@ -158,6 +160,55 @@ auths:
 > **安全提示**：
 > - **配置文件等同脚本**：有了 `exec`，`config.yaml` 和 `sites/*.yaml` 都能让 apic 执行命令，不要导入不信任的站点文件。
 > - **Windows 限制**：token 缓存的 0600 权限不生效；命令是 `.bat`/`.cmd` 时，含 `& | < > ^ % ! "` 的参数会被拒绝。
+
+## 用 overlay 修正定义
+
+生成的命令不好用，或者 spec 写错了，就写 `<配置目录>/overlays/<site>.yaml`，不用改 spec。`site refresh` 后仍然有效，调用、`ops`、`desc`、补全和 `apic skill` 都按覆盖后的结果工作。
+
+```yaml
+operations:
+  "POST /back/cfg/get":          # METHOD /path，与 apic ops 的 PATH 列一致
+    name: cfg-get
+    summary: 查询打印配置
+  "POST /back/cfg/delete":
+    hide: true
+  users-list:                    # 也可以用生成的操作名
+    output: raw
+    body: multipart              # json | form | multipart | xml | raw
+    params:
+      status: {required: true, enum: [active, banned]}
+      debug:  {hide: true}       # 不生成选项，-p debug=... 会被拒绝
+      tenant: {in: header, required: true}   # 新增参数：in 为 query 或 header
+```
+
+```bash
+apic overlay init pet          # 生成 overlays/pet.yaml，每个操作一条空条目
+apic overlay init pet --stdout
+apic config check              # 检查 overlay 的错误和找不到的键
+```
+
+- **找不到的键**：只警告。
+- **结构错误**：取值非法、改名冲突、隐藏 path 参数或必填参数、新增 `Authorization`/`Cookie`/`Host`/`Content-*` 等头，都属于结构错误。这时该站点的命令都退出 1，`site refresh/show/rm` 和 `overlay init` 除外；`config check` 也退出 1。
+- **desc 标注**：改过的字段标 `(overlay)`，隐藏参数标 `(hidden)`；`desc -o json` 增加 `overlay` 数组。
+- **hide 不是访问控制**：隐藏的操作仍能用原始路径调用，隐藏的参数仍能用 `-H` 或原始路径调用带上。危险接口请用 `protect` 和 `allow_methods`。
+- **保留名**：名为 `overlay` 的站点会被跳过并警告。
+
+## 文件上传（multipart）
+
+```bash
+apic pet import-users -F file=@./users.xlsx -F type=user
+apic pet upload -F 'file=@./a.bin;type=application/zip;filename=report.zip'
+apic pet upload -F 'file=@"./a;b.bin";filename=ab.bin'   # 路径含 ; 或 " 时加双引号
+apic pet -X POST /upload -F file=@./a.txt                # 原始路径调用
+```
+
+- **哪些操作走 multipart**：spec 里写了 `multipart/form-data` 的操作按 multipart 发送；其他操作要用 overlay 改请求体类型（`body: multipart`）。
+- **只有 `-F name=@path` 读文件**：`-F name=value`、`-f name=value` 都是文本，`-f name=@x` 发送的就是 `@x` 这个字面值。不支持 `-F name=@-` 和 curl 的 `-F name=<file`，以 `<` 开头的值按文本发送。
+- **type 与名字**：`type` 只能是不带参数的 `type/subtype`；不写时按内置扩展名表推断，推断不出用 `application/octet-stream`。字段名和文件名不能含 `"`、`\` 和控制字符；路径最后一段含这些字符时，用 `;filename=` 另给文件名。
+- **组合限制**：`-F` 不能和 `-d`、`-f` 或 `Content-Type` 头一起用；multipart 操作上单独用 `-d` 时，必须用 `-H 'Content-Type: ...'` 给出类型。
+- **读取限制**：只读普通文件，写保护检查通过后才读；整个请求体上限 64 MiB，更大的上传请用 curl。`--dry-run` 打印的 curl 命令发出的部件与直接发送相同；`-v` 只列出各部件，不打印内容。
+
+> **安全提示**：`-F name=@path` 和 `-d @file` 都会把本地文件发出去。`-d @file` 在写保护检查之前读取，也没有大小上限。Windows 上 UNC 路径（`\\host\share\...`）在打开时就会向该主机认证。
 
 ## shell 补全
 

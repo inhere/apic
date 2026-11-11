@@ -450,3 +450,35 @@
 ## 进度记录
 
 - **2026-11-11 开工**：用户同句批准计划并发出执行请求“批准 apic 二期第二批计划 0.2（接受未复核修订）；开始实施”。
+- **gofer plan**：`plan-20261111-213647-00284801`。
+- **前置检查**：P1 工作树干净，HEAD `b680fcd`；P2 go1.26.0；P3 基线由 `git archive v0.2.0` 构建，`c1/{cfg,lincfg}` 复制到 `compat/{base,new}`，`.raw` 中没有 multipart；P4 curl 8.5.0 支持 `--form-string`；P5 主机 worker 在线。
+- **执行方式**：
+  - T01、T03 由 suga（gpt-6-sol）在主机 worktree 中完成，审查和反向验证后在主机上合并；T03 的 worktree 目录清理时报 Permission denied，留待主机清理。
+  - T02、T04、T06、T05 由 sonnet 子 agent 在主 checkout 中完成，我审查后接受。
+  - T05 在 T03 合并前开工：两者没有共同文件，overlay 的 `body: multipart` 不依赖 T03，属于 Operational Discovery。
+- **提交**：
+  - T01 `00bdf7d`（合并 `14fc178`）。反向验证：去掉 `yaml.Strict()` 后 `TestLoadOverlay` 失败。
+  - T02 `e134128`。子 agent 的细化：空名字报错；`header.X` 形式的新增参数从键中拆出位置；隐藏的操作不再校验参数，也不占用名字。
+  - T04 `2cc5ac1`。反向验证 3 项：阻塞打开、type 正则、隐藏参数。
+  - T06 `9f51292`。
+  - T05 `a36f4ff`。Corrective `96e6df6`：`config check` 遇到没有缓存的站点只提示，不退出 1，按计划只有结构错误才退出 1。
+  - T03 `f6a3ca1`（合并 `9c798bc`）。反向验证：禁用重建后 `TestIndexVersion` 失败。
+  - T07：Corrective `e52d05c`。Windows 主机测试发现 multipart curl 用例的期望值没有转义反斜杠，实现本身正确，只修了测试。另一处 Corrective 在发布说明的回滚步骤：新版正常拉取后会重新保存 ETag，只执行 `site refresh` 可能收到 304，所以改为先删除缓存再 refresh。
+- **验收**：完整输出在 `<WP>/tmp/apic-p2b-accept/`。
+  - **B1、B2 单测**：`go test ./...` 全部通过，overlay、multipart 相关用例都经 `commands.Run` 真实分发。
+  - **B2 real-env**：`b2/curl-replay.sh` 发送 4 个部件，包括含 `@`、`;type=` 的文本值和含 `;`、`,`、`"` 的路径。apic 直接发送与执行 dry-run 的 curl，服务端记录的名字、filename、type 和 sha256 完全一致，结果为 `REPLAY_MATCH`。
+  - **B3 real-env**：`b3/b3.sh`。v0.2.0 建的缓存是 `BODY form`；停掉 spec 服务后，新版显示 `BODY multipart`。`fetched_at` 不变，`etag` 为空，`index_version` 为 2。
+  - **B4**：
+    - `go vet ./...` 和 `GOOS=windows go vet ./...` 通过，`go test ./...` 和 TestLayering 通过，最大源文件 582 行。
+    - `compat.sh` 的 17 条命令，把两份配置的目录路径归一后，v0.2.0 与新版输出逐字节一致。
+    - Windows 主机 job `job-20261111-221515-443ff265`：request、commands、spec、config 四个包通过。
+  - **真实二进制冒烟**：`overlay init` 生成的文件权限 0600、目录 0700，文件已存在时退出 1；改名、新增 header 参数、补全、`desc` 的 `(overlay)` 标注、`config check` 都符合预期。
+- **文档**：README 中英文版补了 overlay、文件上传两节和安全提示；发布说明草稿在 `docs/release-notes/v0.3.0.md`。
+
+**完成总结（COMPLETE）**：
+- 主旨：二期第二批三项已交付：overlay、multipart 上传、索引格式版本与本地重建。
+- 最终状态：B1–B4 全部通过，没有 UNVERIFIED 项。
+- 自主决策：见上文的 3 处 Corrective（`config check` 退出码、Windows 测试期望、回滚步骤），以及 T05 提前开工。
+- 提交：`00bdf7d..` 加上本记录所在的提交，共 12 个，含 2 个合并提交。
+- 耗时：约 45 分钟，从 21:37 到约 22:20（+08:00）。
+- 剩余：发布 v0.3.0，需要外部动作批准；清理 T03 worktree 的残留目录；`-d @file` 的读取时机与大小上限（deferred）；gcli issue `my-tools-74ur`。
