@@ -18,6 +18,7 @@ func Check(cfg *model.Config) []string {
 		if site == nil {
 			continue
 		}
+		warnings = append(warnings, checkAuthNames(name, site)...)
 		for authName, auth := range site.Auths {
 			prefix := fmt.Sprintf("site %s auth %s", name, authName)
 			for field, value := range map[string]string{
@@ -46,6 +47,32 @@ func Check(cfg *model.Config) []string {
 		}
 	}
 	sort.Strings(warnings)
+	return warnings
+}
+
+// checkAuthNames hints at default_auth and envs.*.auth naming an undefined
+// auth. Envs are visited in name order; Check sorts the final list anyway.
+func checkAuthNames(name string, site *model.Site) []string {
+	var warnings []string
+	if site.DefaultAuth != "" {
+		if _, ok := site.Auths[site.DefaultAuth]; !ok {
+			warnings = append(warnings, fmt.Sprintf("site %s: default_auth %q is not defined", name, site.DefaultAuth))
+		}
+	}
+	envNames := make([]string, 0, len(site.Envs))
+	for envName := range site.Envs {
+		envNames = append(envNames, envName)
+	}
+	sort.Strings(envNames)
+	for _, envName := range envNames {
+		auth := site.Envs[envName].Auth
+		if auth == "" {
+			continue
+		}
+		if _, ok := site.Auths[auth]; !ok {
+			warnings = append(warnings, fmt.Sprintf("site %s env %s: auth %q is not defined", name, envName, auth))
+		}
+	}
 	return warnings
 }
 
