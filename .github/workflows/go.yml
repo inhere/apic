@@ -37,12 +37,13 @@ jobs:
 
       - name: Run staticcheck
         uses: reviewdog/action-staticcheck@v1
-        if: ${{ github.event_name == 'pull_request' }}
+        # The action downloads a linux binary; it cannot run on windows runners.
+        if: ${{ github.event_name == 'pull_request' && matrix.os == 'ubuntu-latest' }}
         with:
           github_token: ${{ secrets.github_token }}
           reporter: github-pr-check
           filter_mode: added
-          fail_on_error: true
+          fail_level: any
 
       - name: Run unit tests
         run: go test -cover ./...
