@@ -314,4 +314,20 @@
 
 ## 进度记录
 
-（实施时填写）
+- 前置检查（2026-11-12）：P1 工作树干净、HEAD `66073f9`；P2 go1.26.0、基线 `go test ./...` 通过；P3 v0.3.0 基线二进制与 compat 配置副本就绪；P4 gofer 在线；P5 GitLab 匿名可达。gofer plan `plan-20261112-005942-53e05e01`。
+- T01 `de96fab`、T02 `5c2ea40`、T03 `baca606`、T04 `121617b`、T05 `5833721`（sonnet 子 agent 串行实施）。审查后反向验证 6 处（环境优先于保存、只容忍凭证字段、调用 Invalidate、Invalidate 调 Logout、字面键优先、enum 去重），对应测试均失败且非编译失败。
+- T06 `4726b25`。反向验证 6 处（旧优先级、去掉 dry-run 警告、dry-run 走严格解析、去掉 Invalidate、去掉 use note、`auth ls` 旧逻辑），对应 e2e 均失败。
+- Operational Discovery：exec `token.path` 投影沿用的现有错误文案是 `token not found or not a single-line string in output`；`auth logout --env --auth` 用例另建 login 站点（bearer 无缓存可预置）；`source.auth` 缺变量的现有文案不含变量名，测试按现有文案断言。均不改变验收。
+- T07：
+  - B6 工程：`go vet ./...`、`GOOS=windows go vet ./...`、`go test ./... -count=1` 通过；最大文件 635 行。
+  - B6 Windows：job `job-20261112-011317-22d3a0d5`，`go test ./internal/... -count=1` 全部通过。
+  - B6 compat：17 条，统一配置目录路径后与 v0.3.0 逐字节一致（`<WP>/tmp/apic-p2c-accept/compat/{base,new}.out`）。
+  - B6 real-env：job `job-20261112-011557-4d209e99`：main 0；anon 4；`use --auth pat` 后 anon 仍 4；`use` 显示 `auth: pat (env)`；删 `.env` 后 dry-run 0 且恰好一行警告、真实调用 1；输出无 token，`.env` 已删除。前三次运行因验收脚本自身问题（PowerShell 5 写 BOM、参数 `$a` 与 `$A` 同名遮蔽）作废，修脚本后重跑。
+  - 实施中发现（范围外，记入 issue）：`config.yaml` 带 UTF-8 BOM 时站点被静默忽略（v0.3.0 同样）。
+  - 发布说明草稿：`docs/release-notes/v0.4.0.md`。
+- **COMPLETE 总结**：
+  - 主旨：交付设计 0.2 的五项试用反馈修正（环境声明的认证、dry-run 容忍凭证变量、401 作废、`--pick` 投影、简单定义 enum）。
+  - 最终状态：T01–T07 完成，B1–B6 均有证据；未 push、未发布。
+  - 自主决策：子 agent 串行；real-env 只用 gitlab 沙箱；BOM 问题登记为后续候选，不在本批修。
+  - 提交：7 个（`de96fab`..本记录提交）；实施耗时约 15 分钟（首末功能提交 01:01–01:11，北京时间）。
+  - 剩余：发布 v0.4.0（外部动作，需授权）；deferred 项与 BOM 问题留在 issue。
