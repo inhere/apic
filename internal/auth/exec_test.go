@@ -669,7 +669,9 @@ func TestRunCommand(t *testing.T) {
 		_, err := run(t, 30*time.Second, filepath.Base(f.stub), "count="+counter)
 		failure := asExecFailure(t, err)
 		assert.Eq(t, -1, failure.Code)
-		assert.Eq(t, "command resolves to the current directory", failure.Reason)
+		// The exec auth classification is kept: any resolution error other than
+		// "not found" is reported as "cannot resolve command".
+		assert.Eq(t, "cannot resolve command", failure.Reason)
 		assert.Eq(t, 0, lines(t, counter))
 	})
 
