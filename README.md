@@ -42,7 +42,8 @@ secrets masked everywhere.
 - `--all-pages` follows a paginated list (site `paginate` configuration) and
   merges the pages into one array
 - `apic use <site> --clear` drops the saved environment and authentication
-- `apic skill pet` generates a `SKILL.md` that teaches an AI agent to use the site
+- `apic skill pet` generates a `SKILL.md` that teaches an AI agent to use the site;
+  `apic skill` (no site) generates the generic apic skill
 - `exec` authentication: get the token from an external command (vault, SSO CLI…)
 - Overlays: rename, hide or fix operations and parameters in `overlays/<site>.yaml`
   without touching the upstream spec
@@ -459,13 +460,22 @@ now means two items, both read from the root, so write `data.items.*.{id,name}`.
 ## Generating a skill for AI agents
 
 ```bash
-apic skill pet                       # writes <config dir>/skills/apic-pet/SKILL.md
+apic skill                           # apic's own skill: <config dir>/skills/apic/SKILL.md
+apic skill pet                       # a site skill: <config dir>/skills/apic-pet/SKILL.md
 skillc install -S ~/.config/apic/skills apic-pet
 ```
 
-The skill lists how to call the site, the exit codes, environment and
+The site skill lists how to call the site, the exit codes, environment and
 authentication names (never base URLs or credentials) and the operations
 (grouped by tag when there are more than `--max-ops`). Review it before sharing.
+
+Without a site name you get the generic skill: what apic is for, the config
+directory layout, `site add`, the simple-definition format with a worked
+example, the site configuration, how to call operations, output and exit codes.
+It is the same for every machine, so it can be copied to an agent that has apic
+installed but no site yet. `--out` and `--name` (default `apic`) apply as for a
+site skill; it never reads the site configuration, so a missing or broken config
+directory does not matter.
 
 ## Output and exit codes
 

@@ -31,7 +31,7 @@
 - `--pick 'data.{id,name},code'` 从 JSON 响应里取值：逗号分项从根取，`{...}` 分组，`别名=路径`；`-o yaml`、`-o table` 换格式，数字和字段顺序保持原样
 - `--all-pages` 按站点 `paginate` 配置翻页，把各页合并成一个数组
 - `apic use <site> --clear` 清除保存的环境和认证
-- `apic skill pet` 生成 `SKILL.md`，教 AI agent 使用这个站点
+- `apic skill pet` 生成 `SKILL.md`，教 AI agent 使用这个站点；`apic skill`（不带站点）生成 apic 自身的 skill
 - `exec` 认证：从外部命令（vault、SSO 工具等）取 token
 - overlay：在 `overlays/<site>.yaml` 里给操作改名、隐藏操作、修正参数，不用改上游 spec
 - 文件上传：`-F file=@./a.xlsx` 发送 `multipart/form-data`
@@ -337,13 +337,15 @@ apic pet list-users -o yaml
 ## 生成给 AI agent 用的 skill
 
 ```bash
-apic skill pet                       # 写到 <配置目录>/skills/apic-pet/SKILL.md
+apic skill                           # apic 自身的 skill：<配置目录>/skills/apic/SKILL.md
+apic skill pet                       # 站点 skill：<配置目录>/skills/apic-pet/SKILL.md
 skillc install -S ~/.config/apic/skills apic-pet
 ```
 
-- **内容**：怎么调用、退出码、env 和 auth 的名字、操作清单；操作数超过 `--max-ops` 时按 tag 汇总。
+- **站点 skill 内容**：怎么调用、退出码、env 和 auth 的名字、操作清单；操作数超过 `--max-ops` 时按 tag 汇总。
 - **不含**：base URL 和凭证。
 - **分享前**：先检查一遍。
+- **不带站点名**：得到通用的 apic skill，讲清 apic 用来做什么、配置目录布局、`site add`、简易定义格式与完整示例、站点配置、怎么调用、输出与退出码。它不依赖本机，可拷给装了 apic、还没有站点的 agent。`--out`、`--name`（默认 `apic`）与站点 skill 相同；生成时不读站点配置，配置目录不存在或有错也能生成。
 
 ## 快捷命令
 
