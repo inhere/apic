@@ -30,7 +30,7 @@ func overlayInit(name string, toStdout bool) error {
 		return err
 	}
 	// The raw index: the template must list every operation, hidden or renamed.
-	idx, warnings, err := loadIndex(d, name, site, false)
+	idx, warnings, err := loadIndex(d, name, site, false, "")
 	if err != nil {
 		return err
 	}

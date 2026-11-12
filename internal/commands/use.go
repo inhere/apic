@@ -17,20 +17,35 @@ func (g *globalOpts) bindSelection(c *gcli.Command) {
 }
 
 func useCommand(g *globalOpts) *gcli.Command {
+	clear := false
 	return &gcli.Command{Name: "use", Desc: "Set or show the current environment and authentication of a site", Config: func(c *gcli.Command) {
 		c.AddArg("site", "Site name", true)
 		g.bindSelection(c)
-	}, Func: func(c *gcli.Command, _ []string) error { return useSite(c.Arg("site").String(), g) }}
+		c.BoolOpt(&clear, "clear", "", false, "Clear the saved environment and authentication of the site")
+	}, Func: func(c *gcli.Command, _ []string) error { return useSite(c.Arg("site").String(), g, clear) }}
 }
 
-func useSite(name string, g *globalOpts) error {
+func useSite(name string, g *globalOpts, clear bool) error {
+	if clear && (g.Env != "" || g.Auth != "") {
+		return model.Errorf(model.ExitUsage, "--clear cannot be combined with --env or --auth")
+	}
 	d, err := wiring.Load()
 	if err != nil {
 		return err
 	}
 	site, err := siteLookup(d, name)
 	if err != nil {
-		return err
+		if !clear {
+			return err
+		}
+		return clearOrphanSelection(d, name, err)
+	}
+	if clear {
+		delete(d.State.Selections, name)
+		if err := config.SaveState(d.Dir, d.State); err != nil {
+			return err
+		}
+		return printSelection(d, name, site, d.State.Selections[name])
 	}
 	saved := d.State.Selections[name]
 	if g.Env == "" && g.Auth == "" {
@@ -73,6 +88,19 @@ func firstOf(values ...string) string {
 		}
 	}
 	return "(none)"
+}
+
+// clearOrphanSelection drops a selection left behind by a site that is no
+// longer configured. Without a residue, lookupErr (the missing site) is reported.
+func clearOrphanSelection(d *wiring.Deps, name string, lookupErr error) error {
+	if _, ok := d.State.Selections[name]; !ok {
+		return lookupErr
+	}
+	delete(d.State.Selections, name)
+	if err := config.SaveState(d.Dir, d.State); err != nil {
+		return err
+	}
+	return writeString(os.Stdout, "cleared\n")
 }
 
 func printSelection(d *wiring.Deps, name string, site *model.Site, saved config.Selection) error {

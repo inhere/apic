@@ -43,14 +43,14 @@ func Run(info BuildInfo, args []string) int {
 		sites = append(sites, name)
 	}
 	sort.Strings(sites)
-	site, rewritten, err := Prescan(args, spec, sites)
+	site, rewritten, env, err := Prescan(args, spec, sites)
 	if err != nil {
 		return fail(d.Redactor, err)
 	}
 	app := newApp(info, g, d.Redactor)
 	if site != "" {
 		sc := &siteContext{d: d, name: site, site: d.Cfg.Sites[site], g: g, so: &siteOpts{}}
-		idx, _, warnings, err := loadSiteIndex(d, site, sc.site)
+		idx, _, warnings, err := loadSiteIndex(d, site, sc.site, env)
 		if err != nil {
 			return fail(d.Redactor, err)
 		}

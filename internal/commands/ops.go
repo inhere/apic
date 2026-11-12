@@ -47,7 +47,7 @@ func listOps(name string, opt *opsOptions) error {
 	if err != nil {
 		return err
 	}
-	idx, _, warnings, err := loadSiteIndex(d, name, site)
+	idx, _, warnings, err := loadSiteIndex(d, name, site, "")
 	if err != nil {
 		return err
 	}
@@ -114,7 +114,7 @@ func describeOp(name, operation, format string) error {
 	if err != nil {
 		return err
 	}
-	idx, changes, warnings, err := loadSiteIndex(d, name, site)
+	idx, changes, warnings, err := loadSiteIndex(d, name, site, "")
 	if err != nil {
 		return err
 	}

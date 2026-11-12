@@ -88,26 +88,55 @@ func scan(args []string, globals GlobalSpec) (*scanResult, error) {
 // site, is an ExitUsage error. --api X or --api=X is removed and X is placed
 // right after all the global options. The returned site is empty when the first
 // positional argument is not a configured site; the arguments are then passed
-// to gcli unchanged.
-func Prescan(args []string, globals GlobalSpec, sites []string) (site string, rewritten []string, err error) {
+// to gcli unchanged. env is the last --env given for the targeted site, empty
+// when there is none or no site was recognized.
+func Prescan(args []string, globals GlobalSpec, sites []string) (site string, rewritten []string, env string, err error) {
 	res, err := scan(args, globals)
 	if err != nil {
-		return "", nil, err
+		return "", nil, "", err
 	}
 	if res.hasAPI {
 		if !slices.Contains(sites, res.api) {
-			return "", nil, model.Errorf(model.ExitUsage, "unknown site %q for --api", res.api)
+			return "", nil, "", model.Errorf(model.ExitUsage, "unknown site %q for --api", res.api)
 		}
 		out := make([]string, 0, len(res.rest)+1)
 		out = append(out, res.rest[:res.firstAt]...)
 		out = append(out, res.api)
 		out = append(out, res.rest[res.firstAt:]...)
-		return res.api, out, nil
+		return res.api, out, lastEnvFlag(res.rest), nil
 	}
 	if res.hasFirst && slices.Contains(sites, res.first) {
-		site = res.first
+		return res.first, args, lastEnvFlag(res.rest), nil
 	}
-	return site, args, nil
+	return "", args, "", nil
+}
+
+// lastEnvFlag returns the last --env value in args up to a -- terminator. It
+// mirrors gcli, where a repeated option keeps the last value; the global part
+// (after the --api rewrite) and the part after the site name are both in rest.
+// A value that happens to be the literal --env is not special-cased: only the
+// TLS settings of the definition fetch depend on the result.
+func lastEnvFlag(args []string) string {
+	env := ""
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+		if arg == "--" {
+			break
+		}
+		name, val, hasEq := strings.Cut(arg, "=")
+		if name != "--env" {
+			continue
+		}
+		if hasEq {
+			env = val
+			continue
+		}
+		if i+1 < len(args) {
+			env = args[i+1]
+			i++
+		}
+	}
+	return env
 }
 
 // completionFlag is the gcli option that marks a runtime completion request.

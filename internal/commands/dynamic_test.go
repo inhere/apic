@@ -191,7 +191,7 @@ func TestPrescan(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			site, rewritten, err := commands.Prescan(tc.args, spec, sites)
+			site, rewritten, _, err := commands.Prescan(tc.args, spec, sites)
 			if tc.wantErr {
 				assert.Err(t, err)
 				assert.Contains(t, err.Error(), "")

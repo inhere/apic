@@ -55,10 +55,10 @@ func Load() (*Deps, error) {
 // FetchOptions describes the transport and optional static spec authentication.
 // Both are constructed lazily, on the first request, so reading a valid cached
 // index never depends on TLS files or authentication variables.
-func FetchOptions(d *Deps, name string, site *model.Site) (spec.FetchOptions, error) {
-	envName := site.DefaultEnv
-	if selection := d.State.Selections[name]; selection.Env != "" {
-		envName = selection.Env
+func FetchOptions(d *Deps, name string, site *model.Site, envFlag string) (spec.FetchOptions, error) {
+	envName, err := FetchEnvName(d, name, site, envFlag)
+	if err != nil {
+		return spec.FetchOptions{}, err
 	}
 	env := site.Envs[envName]
 	var (
@@ -107,6 +107,20 @@ func FetchOptions(d *Deps, name string, site *model.Site) (spec.FetchOptions, er
 		return provider.Apply(req.Context(), req, false)
 	}
 	return opt, nil
+}
+
+// FetchEnvName picks the environment used to fetch the definition: the
+// per-call value, then the saved selection, then the site's default_env. Only an
+// explicit envFlag is validated; a saved or default name the site no longer
+// declares keeps the zero environment, as it always has.
+func FetchEnvName(d *Deps, name string, site *model.Site, envFlag string) (string, error) {
+	envName := firstNonEmpty(envFlag, d.State.Selections[name].Env, site.DefaultEnv)
+	if envFlag != "" {
+		if _, ok := site.Envs[envFlag]; !ok {
+			return "", model.Errorf(model.ExitLocal, "site %q has no environment %q", name, envFlag)
+		}
+	}
+	return envName, nil
 }
 
 // lazyTransport builds the real round tripper on first use.
