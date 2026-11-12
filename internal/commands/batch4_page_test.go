@@ -182,8 +182,8 @@ func arrayHandler(pg, sz string, total, size, base int) func(w http.ResponseWrit
 	}
 }
 
-// deployhubHandler answers like DeployHub: data.list plus data.total.
-func deployhubHandler(pg, sz string, total, size, cap int) func(w http.ResponseWriter, r *http.Request) {
+// listTotalHandler answers with data.list plus data.total.
+func listTotalHandler(pg, sz string, total, size, cap int) func(w http.ResponseWriter, r *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, map[string]any{"code": 0, "data": map[string]any{
 			"list":  pageItems(r, pg, sz, total, size, cap, 1),
@@ -223,9 +223,9 @@ func TestAllPages(t *testing.T) {
 		assert.True(t, countLines(t, count) >= 1)
 	})
 
-	t.Run("deployhub style stops at the total", func(t *testing.T) {
+	t.Run("list and total style stops at the total", func(t *testing.T) {
 		pageSite(t, api, stub, pageDef, "    paginate: {page: page, items: data.list, total: data.total}\n")
-		api.setHandle(deployhubHandler("page", "", 6, 3, 0))
+		api.setHandle(listTotalHandler("page", "", 6, 3, 0))
 		code, out, errOut := runIO(t, "dh", "list", "--all-pages")
 		assert.Eq(t, 0, code, errOut)
 		assert.Eq(t, 6, strings.Count(out, `"name"`), out)
@@ -543,7 +543,7 @@ sites:
 	})
 }
 
-// pickListDef serves the DeployHub shape used by the pick command checks.
+// pickListDef serves the data.list shape used by the pick command checks.
 const pickListDef = `operations:
   items:
     get: /items
@@ -553,7 +553,7 @@ const pickListDef = `operations:
 // table columns of a group and the exit code of a syntax error.
 func TestPickCommand(t *testing.T) {
 	api := newPageAPI(t)
-	api.setHandle(deployhubHandler("page", "", 3, 3, 0))
+	api.setHandle(listTotalHandler("page", "", 3, 3, 0))
 	pageSite(t, api, buildExecStub(t), pickListDef, "")
 
 	t.Run("table columns follow the group", func(t *testing.T) {
