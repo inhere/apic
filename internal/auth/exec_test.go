@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"os"
 	"os/exec"
@@ -620,5 +621,117 @@ func TestInvalidate(t *testing.T) {
 		assert.NoErr(t, p.Invalidate())
 		_, statErr := os.Stat(filepath.Join(d.CacheDir, "tokens"))
 		assert.True(t, os.IsNotExist(statErr))
+	})
+}
+
+// asExecFailure requires an error and unwraps the exec runner's failure.
+func asExecFailure(t *testing.T, err error) *model.ExecFailure {
+	t.Helper()
+	assert.Require(t, assert.Err(t, err))
+	var failure *model.ExecFailure
+	assert.Require(t, assert.True(t, errors.As(err, &failure)), "error is not an *model.ExecFailure")
+	return failure
+}
+
+func TestRunCommand(t *testing.T) {
+	f := newExecFixture(t)
+	run := func(t *testing.T, timeout time.Duration, argv ...string) ([]byte, error) {
+		t.Helper()
+		return RunCommand(context.Background(), argv, f.cfgDir, os.Environ(), timeout, f.deps.Redactor)
+	}
+
+	t.Run("no command configured", func(t *testing.T) {
+		_, err := run(t, time.Second)
+		failure := asExecFailure(t, err)
+		assert.Eq(t, -1, failure.Code)
+		assert.Eq(t, "no command configured", failure.Reason)
+	})
+
+	t.Run("relative path resolves against dir", func(t *testing.T) {
+		binDir := filepath.Join(f.cfgDir, "bin")
+		assert.NoErr(t, os.MkdirAll(binDir, 0o755))
+		src, err := os.ReadFile(f.stub)
+		assert.NoErr(t, err)
+		name := filepath.Base(f.stub)
+		assert.NoErr(t, os.WriteFile(filepath.Join(binDir, name), src, 0o755))
+		out, err := run(t, 30*time.Second, "bin/"+name, "json=tok-run-rel")
+		assert.NoErr(t, err)
+		assert.Eq(t, "tok-run-rel", string(out))
+	})
+
+	t.Run("bare name never resolves the current directory", func(t *testing.T) {
+		if runtime.GOOS == "windows" {
+			t.Skip("PATH=. resolution differs on windows")
+		}
+		counter := filepath.Join(t.TempDir(), "count")
+		t.Chdir(filepath.Dir(f.stub))
+		t.Setenv("PATH", ".")
+		_, err := run(t, 30*time.Second, filepath.Base(f.stub), "count="+counter)
+		failure := asExecFailure(t, err)
+		assert.Eq(t, -1, failure.Code)
+		assert.Eq(t, "command resolves to the current directory", failure.Reason)
+		assert.Eq(t, 0, lines(t, counter))
+	})
+
+	t.Run("missing command", func(t *testing.T) {
+		_, err := run(t, 5*time.Second, "./no-such-cmd")
+		failure := asExecFailure(t, err)
+		assert.Eq(t, -1, failure.Code)
+		assert.Eq(t, "command not found", failure.Reason)
+	})
+
+	t.Run("timeout", func(t *testing.T) {
+		start := time.Now()
+		_, err := run(t, 300*time.Millisecond, f.stub, "sleep=10s")
+		failure := asExecFailure(t, err)
+		assert.Contains(t, failure.Reason, "exec timed out after 300ms")
+		assert.True(t, time.Since(start) < 5*time.Second)
+	})
+
+	t.Run("output over 4 MiB", func(t *testing.T) {
+		for _, op := range []string{"big", "bigerr"} {
+			_, err := run(t, 30*time.Second, f.stub, op)
+			failure := asExecFailure(t, err)
+			assert.Eq(t, "output exceeded 4 MiB", failure.Reason)
+		}
+	})
+
+	t.Run("failure reason is the last cleaned stderr line", func(t *testing.T) {
+		f.deps.Secrets.Add("hunter2-secret")
+		_, err := run(t, 30*time.Second, f.stub,
+			"errline=first line", "errline=\x1b[31mbad hunter2-secret\x01 here\x1b[0m", "exit=3")
+		failure := asExecFailure(t, err)
+		assert.Eq(t, 3, failure.Code)
+		assert.Eq(t, "bad *** here", failure.Reason)
+		assert.NotContains(t, failure.Reason, "hunter2-secret")
+
+		_, err = run(t, 30*time.Second, f.stub, "errline="+strings.Repeat("é", 300), "exit=2")
+		assert.Eq(t, execErrMaxRunes, len([]rune(asExecFailure(t, err).Reason)))
+	})
+
+	t.Run("reason never contains argv", func(t *testing.T) {
+		_, err := run(t, 30*time.Second, f.stub, "errline=boom", "arg-secret-xyz", "exit=3")
+		failure := asExecFailure(t, err)
+		assert.Eq(t, "boom", failure.Reason)
+		assert.NotContains(t, failure.Reason, "arg-secret-xyz")
+		assert.NotContains(t, failure.Reason, filepath.Base(f.stub))
+	})
+}
+
+func TestExecValue(t *testing.T) {
+	f := newExecFixture(t)
+	execValue := ExecValue(f.cfgDir, f.deps.Redactor)
+
+	t.Run("returns stdout as is", func(t *testing.T) {
+		out, err := execValue([]string{f.stub, "json=tok-value-1"})
+		assert.NoErr(t, err)
+		assert.Eq(t, "tok-value-1", out)
+	})
+
+	t.Run("failure carries the exit code and reason", func(t *testing.T) {
+		_, err := execValue([]string{f.stub, "errline=denied", "exit=3"})
+		failure := asExecFailure(t, err)
+		assert.Eq(t, 3, failure.Code)
+		assert.Eq(t, "denied", failure.Reason)
 	})
 }
