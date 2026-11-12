@@ -572,4 +572,36 @@
 
 ## 进度记录
 
-（实施开始后填写。）
+**执行方式偏离（已记录在 issue）**：用户在批准 0.2 时要求“使用 suga 的 oc-go/cmdc ds4.1 交替使用”，实施方由 sonnet 子 agent 改为 suga（`opencode-go/deepseek-v4.1-flash` 与 `command-code/deepseek-v4.1-flash` 轮换），每个任务在 gofer worktree 中串行实施，审核后在主机合入再派下一个。T06 拆为 T06a/b/c 三次执行，语义不变。每个任务都经 diff 审读、Linux 全量测试与反向验证（改坏关键行，确认对应用例失败且不是编译失败）。
+
+| 任务 | job | 模型 | 合入 | 审核修正 |
+|---|---|---|---|---|
+| T01 | job-20261112-205514-1299c141 | oc-go | ee00dad | 无；范围扩展：`commands/pick_test.go` 旧投影用例改为新语法（必需） |
+| T02 | job-20261112-210620-c18efc23 | cmdc | 5807117 | 无 |
+| T03 | job-20261112-211021-3c99c5aa | oc-go | 98f2b1a | 无 |
+| T04 | job-20261112-211809-7a69ba66 | cmdc | 3dba195 | dfc1e23：`config check` 补查 `login.body` 数组中的字符串；补“闭合引用在未闭合引用之前不执行”用例 |
+| T05 | job-20261112-213337-6576b02a | oc-go | 02fa314 | 90c382a：Linux 用例期望文案改为沿用分类 `cannot resolve command`（Windows 上跳过，实施方未跑到） |
+| T06a | job-20261112-214307-9f0c8c9d | cmdc | fb7b8ea 所在合并 | 无；`apic dh --env secure ops` 不成立（`ops` 不是站点子命令），按计划改为站点调用 |
+| T06b | job-20261112-215422-e08fdcd9 | oc-go | 88f36d8 所在合并 | cc4b0ae：条数优先用例改为整组断言 |
+| T06c | job-20261112-220841-7d63cea5 | cmdc | b4562a1 所在合并 | 9bacf9e（安全）：实施方为让 dry-run 显示 `<exec>` 给 provider 传空 Secrets，会让缓存的 login token 在自定义头中明文出现；改为 auth 在 dry-run 中只对含占位的静态值跳过登记，加回归用例；b86425a：GitLab 示例改分组写法并加 `paginate` |
+| T06d | job-20261112-222044-f273a731 | oc-go | 826fe83 | 54ea3eb：模板三处说法不准（`config check` 不报未知键、`${env:}` 只在 auths 展开、`source.auth` 拉取在 dry-run 中仍执行 `${exec:}`） |
+| T07 | Claude | — | 本提交 | — |
+
+**说明与差异**
+
+- 设计 §1“其他”写“对象结果 `-o table` 回退 JSON”，与现有规则不符：现有 table 对单个对象输出 KEY/VALUE 两列。按“现有规则”实现，属设计文字笔误，发布说明写实际行为。
+- 计划 B5 写“非凭证字段中未闭合的 `${exec:` 报 malformed”，而 T04 先做位置检查，实际报 `only allowed in credential values`；两者都退出 1、不含原文。
+- 实施方自拟的文案：`${exec:} produced an empty value`、`${exec:} output contains control characters`；分页前提检查 `--all-pages: site %q has no paginate configuration`、`--max-pages must be a positive integer, got %q`、`--all-pages: page parameter %q: %q is not an integer`。
+- real-env 第 3 步未用 `--search`，改为 `--simple true`，以保证数据多于 3 页。
+
+**T07 验收证据**（`<WP>` 为工作区根）
+
+- B1–B5、B7：对应任务的测试（`TestPick*`、`TestPaginateConfig`、`TestPaginate`、`TestExecRef*`、`TestCheckExecRef`、`TestRunCommand`、`TestExecValue`、`TestLoadExecUsesTheConfigDirectory`、`TestUseClear`、`TestEnvFetch`、`TestPrescanEnv`、`TestAllPages`、`TestPickCommand`、`batch4_exec_test.go`、`TestDryRunMasksCachedTokenInCustomHeader`、`TestRenderSelf`、`TestSkillSelf*`、`TestSimpleDoc*`），在 Linux 与 Windows 上均通过。
+- B6：
+  - 容器：`go vet ./...`、`GOOS=windows go vet ./...`、`go test ./... -count=1`、分层测试通过；最长 Go 文件 < 1000 行。
+  - Windows 主机：job-20261112-223452-841b68e0，`vet_rc=0`、`test_rc=0`（11 个包），`TestRunCommandRejectsBatchMetacharacters` 通过；反向验证（去掉 `checkResolved`）该用例失败。
+  - compat：`<WP>/tmp/apic-p2d-accept/compat.sh`，v0.4.0 基线与新二进制跑第三批的 17 条清单，唯一差异是两份配置副本的目录名（`base`/`new`），输出等价；清单中没有 `--pick` 条目。
+  - real-env：job-20261112-223554-6b4bff83。P5 匿名调用 `rc=4`（401，可达）；dry-run `rc=0`、`<exec>` 1 处、标记文件不存在；真实调用 `rc=0`、标记文件存在；翻页 `rc=0`、输出 16 行（表头 + 15）、stderr 1 行 `--max-pages` 警告；`config check` 列出 `runs ${exec:}`；清理后 `secret/` 与标记文件均不存在。
+- 发布说明草稿：`docs/release-notes/v0.5.0.md`，已逐条对照设计“安全、数据、运维与回滚”中的行为变化与回滚，以及 §6。
+
+**完成总结**：T01–T07 与 T06d 完成，B1–B7 有证据。发布 v0.5.0（push、tag、release）是外部动作，等待用户授权。
