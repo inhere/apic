@@ -166,31 +166,37 @@ func TestOutputModes(t *testing.T) {
 
 func TestPickProjection(t *testing.T) {
 	setupPick(t)
-	t.Run("table columns follow the projection", func(t *testing.T) {
-		code, out, errOut := runIO(t, "demo", "items", "--pick", "data.items.*.id,name", "-o", "table")
+	t.Run("table columns follow the group", func(t *testing.T) {
+		code, out, errOut := runIO(t, "demo", "items", "--pick", "data.items.*.{id,name}", "-o", "table")
 		assert.Eq(t, 0, code, errOut)
 		lines := strings.Split(strings.TrimRight(out, "\n"), "\n")
 		assert.Eq(t, []string{"id", "name"}, strings.Fields(lines[0]))
 		assert.Eq(t, 3, len(lines))
-		code, out, errOut = runIO(t, "demo", "items", "--pick", "data.items.*.name,id", "-o", "table")
+		code, out, errOut = runIO(t, "demo", "items", "--pick", "data.items.*.{name,id}", "-o", "table")
 		assert.Eq(t, 0, code, errOut)
 		assert.Eq(t, []string{"name", "id"}, strings.Fields(strings.SplitN(out, "\n", 2)[0]))
 	})
-	t.Run("root object projection", func(t *testing.T) {
+	t.Run("root object from several items", func(t *testing.T) {
 		code, out, errOut := runIO(t, "demo", "items", "--pick", "z,a,missing", "-o", "json")
 		assert.Eq(t, 0, code, errOut)
 		assert.Contains(t, out, `"z": 1`)
 		assert.Contains(t, out, `"missing": null`)
 		assert.True(t, strings.Index(out, `"z"`) < strings.Index(out, `"a"`))
 	})
-	t.Run("non-object elements fall back to JSON", func(t *testing.T) {
-		code, out, errOut := runIO(t, "demo", "items", "--pick", "data.*.id,name", "-o", "table")
+	t.Run("missing keys below star are null", func(t *testing.T) {
+		code, out, errOut := runIO(t, "demo", "items", "--pick", "data.items.*.{id,missing}", "-o", "json")
 		assert.Eq(t, 0, code, errOut)
-		assert.Contains(t, errOut, "note: value has no table form; printing JSON")
-		assert.Contains(t, out, "null")
+		assert.Contains(t, out, `"missing": null`)
 	})
-	t.Run("projection needs an object", func(t *testing.T) {
-		code, _, errOut := runIO(t, "demo", "items", "--pick", "data.title.a,b")
+	t.Run("object result prints as a key/value table", func(t *testing.T) {
+		code, out, errOut := runIO(t, "demo", "items", "--pick", "data.items.*.{id,name},data.total", "-o", "table")
+		assert.Eq(t, 0, code, errOut)
+		assert.Eq(t, []string{"KEY", "VALUE"}, strings.Fields(strings.SplitN(out, "\n", 2)[0]))
+		assert.Contains(t, out, "items")
+		assert.Contains(t, out, "total")
+	})
+	t.Run("group needs an object", func(t *testing.T) {
+		code, _, errOut := runIO(t, "demo", "items", "--pick", "data.title.{a,b}")
 		assert.Eq(t, 7, code)
 		assert.Contains(t, errOut, "needs an object")
 	})
