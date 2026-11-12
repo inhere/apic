@@ -103,6 +103,9 @@ func applyPick(v any, segs, prefix []string) (any, error) {
 		}
 		val, ok := t.Vals[seg]
 		if !ok {
+			if strings.Contains(seg, ",") {
+				return nil, pickFail(prefix, seg, "not found; "+projectionHint(append(next, segs[1:]...)))
+			}
 			return nil, pickFail(prefix, seg, "not found")
 		}
 		return applyPick(val, segs[1:], next)
@@ -128,4 +131,27 @@ func applyPick(v any, segs, prefix []string) (any, error) {
 		return applyPick(t[n], segs[1:], next)
 	}
 	return nil, pickFail(prefix, seg, "cannot be applied to a scalar value")
+}
+
+// projectionHint explains a comma outside the last segment, such as the
+// full-path list "data.username,data.id", and suggests "data.username,id"
+// when every listed path shares the same parent.
+func projectionHint(segs []string) string {
+	const generic = "a projection lists keys in the last segment only, e.g. data.items.*.id,name"
+	parts := strings.Split(strings.Join(segs, "."), ",")
+	first := parts[0]
+	dot := strings.LastIndex(first, ".")
+	if dot < 0 {
+		return generic
+	}
+	base := first[:dot]
+	keys := []string{first[dot+1:]}
+	for _, p := range parts[1:] {
+		p = strings.TrimPrefix(p, base+".")
+		if p == "" || strings.Contains(p, ".") {
+			return generic
+		}
+		keys = append(keys, p)
+	}
+	return fmt.Sprintf("a projection lists keys in the last segment only: try %s.%s", base, strings.Join(keys, ","))
 }

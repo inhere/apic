@@ -260,7 +260,7 @@ apic pet list-users -o yaml
 
 - **路径写法**：路径用点号分段，段可以是键名、数组下标（`items.0`）或 `*`。
 - **`*` 的规则**：`*` 表示每个元素，缺少的字段填 `null`，空数组得到 `[]`。
-- **投影**：最后一段可写成 `a,b`，按给出的顺序取这几个键组成对象，缺少的键为 `null`；如 `--pick data.items.*.id,name -o table` 输出两列。投影只作用于对象，数组要先写 `.*`。
+- **投影**：最后一段可写成 `a,b`，按给出的顺序取这几个键组成对象，缺少的键为 `null`；如 `--pick data.items.*.id,name -o table` 输出两列。投影只作用于对象，数组要先写 `.*`。投影中的键相对于上一级：写 `data.username,id`，不要写成 `data.username,data.id`。
 - **生效范围**：`--pick`、`-o yaml`、`-o table` 只对 2xx 响应生效，其他响应原样输出。
 
 ## 生成给 AI agent 用的 skill

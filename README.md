@@ -321,6 +321,8 @@ missing fields become `null`, an empty array gives `[]`). The last segment may
 be a projection `a,b`, which builds an object from those keys in the given
 order (missing keys are `null`): `--pick data.items.*.id,name -o table` prints
 two columns. A projection needs an object; put `.*` before it for arrays.
+Keys in a projection are relative to the parent: write `data.username,id`,
+not `data.username,data.id`.
 `--pick`, `-o yaml`
 and `-o table` apply to 2xx responses only; other responses print unchanged.
 

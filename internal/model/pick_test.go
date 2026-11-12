@@ -159,3 +159,18 @@ func TestPickProjection(t *testing.T) {
 		assert.Eq(t, "a.b,c", p.String())
 	})
 }
+
+func TestPickCommaOutsideLastSegmentHint(t *testing.T) {
+	body := `{"data":{"id":7,"username":"u","x":{"y":1}}}`
+	_, err := pickJSON(t, body, "data.username,data.id")
+	assert.Require(t, assert.Error(t, err))
+	assert.Contains(t, err.Error(), `--pick segment "username,data" not found`)
+	assert.Contains(t, err.Error(), "try data.username,id")
+	_, err = pickJSON(t, body, "data.username,x.y")
+	assert.Require(t, assert.Error(t, err))
+	assert.Contains(t, err.Error(), "in the last segment only, e.g. data.items.*.id,name")
+	// a literal key containing a comma still wins
+	got, err := pickJSON(t, `{"a,b":{"c":1}}`, "a,b.c")
+	assert.NoError(t, err)
+	assert.Eq(t, "1", got)
+}
