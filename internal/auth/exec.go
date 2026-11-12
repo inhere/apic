@@ -30,6 +30,82 @@ const (
 	execErrMaxRunes    = 200
 )
 
+// execValueTimeout bounds one ${exec:} reference. A variable so tests can
+// shorten it.
+var execValueTimeout = 30 * time.Second
+
+// RunCommand resolves argv[0] (relative paths against dir, bare names through
+// PATH with the current directory refused), applies the batch-file argument
+// check, and runs the command with an empty stdin, a 4 MiB output limit and
+// timeout. It returns stdout; on failure it returns *model.ExecFailure with the
+// same classification the exec auth uses, and never argv in the reason.
+func RunCommand(ctx context.Context, argv []string, dir string, env []string, timeout time.Duration, red *model.Redactor) ([]byte, error) {
+	if len(argv) == 0 {
+		return nil, &model.ExecFailure{Code: -1, Reason: "no command configured"}
+	}
+	path, err := resolveCommand(argv[0], dir)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) || errors.Is(err, exec.ErrNotFound) {
+			return nil, &model.ExecFailure{Code: -1, Reason: "command not found"}
+		}
+		return nil, &model.ExecFailure{Code: -1, Reason: "cannot resolve command"}
+	}
+	args := argv[1:]
+	if err := checkResolved(path, args); err != nil {
+		return nil, &model.ExecFailure{Code: -1, Reason: err.Error()}
+	}
+
+	runCtx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+	cmd := exec.CommandContext(runCtx, path, args...)
+	cmd.Dir = dir
+	cmd.Stdin = nil // the null device
+	cmd.Env = env
+	cmd.WaitDelay = execWaitDelay
+	configureCmd(cmd)
+	stdout := &limitBuffer{limit: execOutputLimit, onExceed: cancel}
+	stderr := &limitBuffer{limit: execOutputLimit, onExceed: cancel}
+	cmd.Stdout, cmd.Stderr = stdout, stderr
+
+	runErr := cmd.Run()
+	code := -1
+	if cmd.ProcessState != nil {
+		code = cmd.ProcessState.ExitCode()
+	}
+	if stdout.over() || stderr.over() {
+		return nil, &model.ExecFailure{Code: code, Reason: "output exceeded 4 MiB"}
+	}
+	if runErr != nil && !(errors.Is(runErr, exec.ErrWaitDelay) && code == 0) {
+		switch {
+		case ctx.Err() != nil:
+			return nil, &model.ExecFailure{Code: code, Reason: "exec timed out (request deadline)"}
+		case errors.Is(runCtx.Err(), context.DeadlineExceeded):
+			return nil, &model.ExecFailure{Code: code, Reason: "exec timed out after " + timeout.String()}
+		case cmd.ProcessState == nil && (errors.Is(runErr, os.ErrNotExist) || errors.Is(runErr, exec.ErrNotFound)):
+			return nil, &model.ExecFailure{Code: -1, Reason: "command not found"}
+		case cmd.ProcessState == nil && errors.Is(runErr, os.ErrPermission):
+			return nil, &model.ExecFailure{Code: -1, Reason: "permission denied"}
+		case cmd.ProcessState == nil:
+			return nil, &model.ExecFailure{Code: -1, Reason: "cannot start command"}
+		}
+		return nil, &model.ExecFailure{Code: code, Reason: cleanLastLine(stderr.buf.Bytes(), red)}
+	}
+	return stdout.buf.Bytes(), nil
+}
+
+// ExecValue returns config.Env.Exec bound to the config directory dir: the
+// parent environment, no APIC_* identity, and a fixed execValueTimeout. Output
+// is returned as is; trimming and validation belong to the config layer.
+func ExecValue(dir string, red *model.Redactor) func(argv []string) (string, error) {
+	return func(argv []string) (string, error) {
+		out, err := RunCommand(context.Background(), argv, dir, os.Environ(), execValueTimeout, red)
+		if err != nil {
+			return "", err
+		}
+		return string(out), nil
+	}
+}
+
 // applyExec mirrors applyLogin: in-memory token, then cache, then (unless dry)
 // run the command.
 func (p *Provider) applyExec(ctx context.Context, req *http.Request, dry bool) error {
@@ -106,8 +182,14 @@ func (p *Provider) execFailure(code int, msg string) error {
 
 var ansiRe = regexp.MustCompile(`\x1b\[[0-9;?]*[ -/]*[@-~]|\x1b[@-Z\\-_]`)
 
-// lastLine returns the last non-empty stderr line, cleaned, redacted and capped.
+// lastLine is cleanLastLine bound to the provider's redactor.
 func (p *Provider) lastLine(stderr []byte) string {
+	return cleanLastLine(stderr, p.deps.Redactor)
+}
+
+// cleanLastLine returns the last non-empty stderr line, cleaned, redacted (red
+// may be nil) and capped.
+func cleanLastLine(stderr []byte, red *model.Redactor) string {
 	lines := strings.Split(strings.ReplaceAll(string(stderr), "\r", "\n"), "\n")
 	for i := len(lines) - 1; i >= 0; i-- {
 		line := ansiRe.ReplaceAllString(lines[i], "")
@@ -122,7 +204,7 @@ func (p *Provider) lastLine(stderr []byte) string {
 			continue
 		}
 		// Redact before truncating so a cut can never leave a secret prefix.
-		r := []rune(p.redact(line))
+		r := []rune(red.Redact(line))
 		if len(r) > execErrMaxRunes {
 			r = r[:execErrMaxRunes]
 		}
@@ -185,61 +267,19 @@ func (b *limitBuffer) over() bool {
 // expiry (zero when the output gives none).
 func (p *Provider) runExec(ctx context.Context) (string, time.Time, error) {
 	x := p.spec.Exec
-	if len(x.Command) == 0 {
-		return "", time.Time{}, p.execFailure(-1, "no command configured")
-	}
 	timeout := defaultExecTimeout
 	if d, ok := parsePositiveDuration(x.Timeout); ok {
 		timeout = d
 	}
-	path, err := resolveCommand(x.Command[0], p.deps.ConfigDir)
+	out, err := RunCommand(ctx, x.Command, p.deps.ConfigDir, p.execEnv(), timeout, p.deps.Redactor)
 	if err != nil {
-		if errors.Is(err, os.ErrNotExist) || errors.Is(err, exec.ErrNotFound) {
-			return "", time.Time{}, p.execFailure(-1, "command not found")
+		var failure *model.ExecFailure
+		if errors.As(err, &failure) {
+			return "", time.Time{}, p.execFailure(failure.Code, failure.Reason)
 		}
-		return "", time.Time{}, p.execFailure(-1, "cannot resolve command")
+		return "", time.Time{}, err
 	}
-	args := x.Command[1:]
-	if err := checkResolved(path, args); err != nil {
-		return "", time.Time{}, p.execFailure(-1, err.Error())
-	}
-
-	runCtx, cancel := context.WithTimeout(ctx, timeout)
-	defer cancel()
-	cmd := exec.CommandContext(runCtx, path, args...)
-	cmd.Dir = p.deps.ConfigDir
-	cmd.Stdin = nil // the null device
-	cmd.Env = p.execEnv()
-	cmd.WaitDelay = execWaitDelay
-	configureCmd(cmd)
-	stdout := &limitBuffer{limit: execOutputLimit, onExceed: cancel}
-	stderr := &limitBuffer{limit: execOutputLimit, onExceed: cancel}
-	cmd.Stdout, cmd.Stderr = stdout, stderr
-
-	runErr := cmd.Run()
-	code := -1
-	if cmd.ProcessState != nil {
-		code = cmd.ProcessState.ExitCode()
-	}
-	if stdout.over() || stderr.over() {
-		return "", time.Time{}, p.execFailure(code, "output exceeded 4 MiB")
-	}
-	if runErr != nil && !(errors.Is(runErr, exec.ErrWaitDelay) && code == 0) {
-		switch {
-		case ctx.Err() != nil:
-			return "", time.Time{}, p.execFailure(code, "exec timed out (request deadline)")
-		case errors.Is(runCtx.Err(), context.DeadlineExceeded):
-			return "", time.Time{}, p.execFailure(code, "exec timed out after "+timeout.String())
-		case cmd.ProcessState == nil && (errors.Is(runErr, os.ErrNotExist) || errors.Is(runErr, exec.ErrNotFound)):
-			return "", time.Time{}, p.execFailure(-1, "command not found")
-		case cmd.ProcessState == nil && errors.Is(runErr, os.ErrPermission):
-			return "", time.Time{}, p.execFailure(-1, "permission denied")
-		case cmd.ProcessState == nil:
-			return "", time.Time{}, p.execFailure(-1, "cannot start command")
-		}
-		return "", time.Time{}, p.execFailure(code, p.lastLine(stderr.buf.Bytes()))
-	}
-	return p.parseExecOutput(stdout.buf.Bytes())
+	return p.parseExecOutput(out)
 }
 
 // execEnv is the parent environment plus exec.env plus the APIC_* identity.
