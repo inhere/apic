@@ -113,7 +113,7 @@ func withNames(extra ...string) []string {
 
 func TestCompletion(t *testing.T) {
 	env := setupCompletion(t, "")
-	globalLong := []string{"--auth", "--dry-run", "--env", "--header", "--include", "--output", "--pick", "--timeout", "--verbose", "--yes"}
+	globalLong := []string{"--all-pages", "--auth", "--dry-run", "--env", "--header", "--include", "--max-pages", "--output", "--pick", "--timeout", "--verbose", "--yes"}
 	t.Run("top level lists management commands and sites", func(t *testing.T) {
 		assert.Eq(t, withNames("jk", "jkx", "pet"), complete(t, ""))
 	})
@@ -161,7 +161,7 @@ func TestCompletion(t *testing.T) {
 
 func TestPrescanCompletion(t *testing.T) {
 	setupCompletion(t, "")
-	top := []string{"--api", "--auth", "--dry-run", "--env", "--gen-completion", "--header", "--help", "--include", "--output", "--pick", "--timeout", "--verbose", "--version", "--yes", "-H", "-V", "-h", "-i", "-o", "-v"}
+	top := []string{"--all-pages", "--api", "--auth", "--dry-run", "--env", "--gen-completion", "--header", "--help", "--include", "--max-pages", "--output", "--pick", "--timeout", "--verbose", "--version", "--yes", "-H", "-V", "-h", "-i", "-o", "-v"}
 	t.Run("top level options", func(t *testing.T) {
 		assert.Eq(t, top, complete(t, "-"))
 		assert.Eq(t, []string{"--env"}, complete(t, "--e"))
