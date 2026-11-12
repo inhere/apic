@@ -34,6 +34,27 @@ type frontmatter struct {
 	Description string `yaml:"description"`
 }
 
+// checkName validates a skill name for every renderer and for Write.
+func checkName(name string) error {
+	if !namePattern.MatchString(name) {
+		return model.Errorf(model.ExitUsage, "invalid skill name %q (expected ^[a-z0-9][a-z0-9-]{0,63}$)", name)
+	}
+	return nil
+}
+
+// writeHeader writes the frontmatter, the closing delimiter and the Marker
+// line. Every generated skill starts with exactly this block.
+func writeHeader(b *strings.Builder, name, description string) error {
+	fm, err := yaml.Marshal(frontmatter{Name: name, Description: description})
+	if err != nil {
+		return model.Errorf(model.ExitLocal, "skill frontmatter: %v", err)
+	}
+	b.WriteString("---\n")
+	b.Write(fm)
+	b.WriteString("---\n" + Marker + "\n\n")
+	return nil
+}
+
 // tagCounts returns operation counts per tag (untagged for none) and the tag
 // names sorted by descending count, then name.
 func tagCounts(idx *model.Index) (map[string]int, []string) {
@@ -88,19 +109,15 @@ func Render(in Input) ([]byte, error) {
 	if in.Index == nil || in.Cfg == nil {
 		return nil, model.Errorf(model.ExitLocal, "skill: missing index or site configuration")
 	}
-	if !namePattern.MatchString(in.Name) {
-		return nil, model.Errorf(model.ExitUsage, "invalid skill name %q (expected ^[a-z0-9][a-z0-9-]{0,63}$)", in.Name)
+	if err := checkName(in.Name); err != nil {
+		return nil, err
 	}
 	counts, tagNames := tagCounts(in.Index)
-	fm, err := yaml.Marshal(frontmatter{Name: in.Name, Description: describe(in, tagNames)})
-	if err != nil {
-		return nil, model.Errorf(model.ExitLocal, "skill frontmatter: %v", err)
-	}
 	site := Sanitize(in.Site, fieldMax)
 	var b strings.Builder
-	b.WriteString("---\n")
-	b.Write(fm)
-	b.WriteString("---\n" + Marker + "\n\n")
+	if err := writeHeader(&b, in.Name, describe(in, tagNames)); err != nil {
+		return nil, err
+	}
 	fmt.Fprintf(&b, "# %s API via apic\n\n", site)
 	writeUsage(&b, site)
 	writeEnvs(&b, in.Cfg)
