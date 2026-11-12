@@ -36,6 +36,9 @@ type Call struct {
 	Verbose    io.Writer // request line and redacted headers; nil disables
 	Stderr     io.Writer // insecure warning; nil disables
 	Prompt     func(msg string) bool
+	// QuietInsecure suppresses the insecure warning; pagination sets it after
+	// the first page so the warning is printed once per call.
+	QuietInsecure bool
 }
 
 // Response is the result of Execute. In dry-run mode Curl is set and Status is 0.
@@ -145,7 +148,7 @@ func Execute(ctx context.Context, c Call) (*Response, error) {
 }
 
 func (c *Call) send(client *http.Client, req *http.Request) (*Response, error) {
-	if c.Env.Insecure && c.Stderr != nil {
+	if c.Env.Insecure && !c.QuietInsecure && c.Stderr != nil {
 		fmt.Fprintln(c.Stderr, "warning: TLS certificate verification is disabled (insecure: true)")
 	}
 	if c.Verbose != nil {
