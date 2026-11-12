@@ -38,6 +38,14 @@
 
 ## 安装
 
+推荐用 [eget](https://github.com/inherelab/eget) 安装预编译的二进制（支持 Linux、macOS 与 Windows，会校验 checksum）：
+
+```bash
+eget install inhere/apic
+```
+
+也可以从 [Releases](https://github.com/inhere/apic/releases/latest) 下载，或者用 Go 安装：
+
 ```bash
 go install github.com/inhere/apic/cmd/apic@latest
 ```
@@ -72,6 +80,115 @@ apic pet list-users --dry-run                   # 只打印 curl 命令
 - `-f a.b=v` 拼出嵌套对象。
 
 参数名与全局选项重名时，用 `-p name=value` 或 `-p query.name=value` 传入。`all-pages`、`max-pages` 也是保留的选项名。
+
+## 常用场景
+
+下面的例子都假设有个站点 `pet`，它的列表接口返回
+`{"code":0,"data":{"list":[{"id":1,"name":"tom","dept":{"name":"dev"}}],"page":1,"size":10,"total":42}}`。
+
+### 几行 YAML 接入一个小服务
+
+没有 OpenAPI 文档时，把接口写下来再注册：
+
+```yaml
+# ~/.config/apic/defs/pet.yaml
+operations:
+  users:
+    get: /api/users
+    summary: list users
+    query: [keyword, page, size]
+  user:
+    get: /api/users/{id}             # 生成必填的 --id
+  create-user:
+    post: /api/users
+```
+
+```bash
+apic site add pet --def ~/.config/apic/defs/pet.yaml --base-url http://127.0.0.1:8080
+apic ops pet
+apic pet users --keyword tom
+apic pet user --id 7
+apic pet create-user -f name=tom -f age:=3      # {"name":"tom","age":3}
+```
+
+### 把列表输出成表格
+
+```bash
+apic pet users --pick 'data.list.*.{id,name,dept=dept.name}' -o table
+# id  name  dept
+# 1   tom   dev
+apic pet users --pick data.total                         # 42
+apic pet users --pick 'total=data.total,first=data.list.0.name'   # {"total":42,"first":"tom"}
+```
+
+### 取全部分页
+
+先在站点上配一次 `paginate`：
+
+```yaml
+sites:
+  pet:
+    paginate: {page: page, size: size, items: data.list, total: data.total}
+```
+
+```bash
+apic pet users --all-pages --pick '*.{id,name}' -o table   # 路径从合并后的数组开始
+apic pet users --size 100 --max-pages 5                    # 最多 5 页；还有剩余时给出警告
+apic pet users --all-pages | jq length
+```
+
+加了 `--all-pages` 后，输出是各页 `data.list` 合并成的数组，所以 `--pick` 里不再写 `data.list.` 前缀。
+
+### 在脚本里用
+
+```bash
+name=$(apic pet user --id 7 --pick data.name)   # 字符串直接输出：tom
+apic pet user --id 999 >/dev/null 2>&1; echo $?  # 4（HTTP 4xx）
+```
+
+按[退出码](#输出与退出码)分支：3 网络错误，4 HTTP 4xx，5 HTTP 5xx，6 被写保护拦下，7 请求成功但 `--pick` 或 `-o` 失败（不要重试）。
+
+### 保护生产环境
+
+```yaml
+    envs:
+      dev:  {base_url: http://127.0.0.1:8080}
+      prod: {base_url: https://pet.example.com, protect: true}
+```
+
+```bash
+apic pet users --env prod                          # 读不受限制
+apic pet create-user --env prod -f name=tom        # 退出 6：POST on a protected environment requires --yes
+apic pet create-user --env prod -f name=tom --yes
+```
+
+### 凭证不写进配置
+
+```yaml
+    auths:
+      admin: {type: bearer, token: "${env:PET_TOKEN}"}             # 来自 .env 或 shell 环境变量
+      vault: {type: bearer, token: "${exec:pass show pet/token}"}  # 来自密码管理器
+```
+
+```bash
+apic pet users --auth vault
+```
+
+### 看清发出去的请求
+
+```bash
+apic pet create-user -f name=tom --dry-run   # 打印 curl 命令，token 显示为 ***
+apic pet user --id 7 -v -i                   # 请求头与响应头输出到 stderr
+apic pet -X GET /api/users/7 -H 'X-Trace: 1' # 定义里没有的路径也能调
+```
+
+### 快捷命令与 AI agent
+
+```bash
+apic link pet --name petctl && petctl users --keyword tom
+apic skill          # 生成教 agent 使用 apic 的 SKILL.md
+apic skill pet      # 生成 pet 站点的 SKILL.md
+```
 
 ## 配置
 

@@ -51,6 +51,16 @@ secrets masked everywhere.
 
 ## Install
 
+Recommended: install the prebuilt binary with [eget](https://github.com/inherelab/eget)
+(Linux, macOS and Windows; the checksum is verified):
+
+```bash
+eget install inhere/apic
+```
+
+Or download it from [Releases](https://github.com/inhere/apic/releases/latest),
+or install with Go:
+
 ```bash
 go install github.com/inhere/apic/cmd/apic@latest
 ```
@@ -83,6 +93,117 @@ apic pet list-users --dry-run                   # print the curl command only
 `-f a.b=v` builds nested objects. A parameter whose name clashes with a global
 option is passed with `-p name=value` (or `-p query.name=value`); `all-pages`
 and `max-pages` are reserved option names too.
+
+## Recipes
+
+Each recipe assumes a site `pet` whose list API answers
+`{"code":0,"data":{"list":[{"id":1,"name":"tom","dept":{"name":"dev"}}],"page":1,"size":10,"total":42}}`.
+
+### Wrap a small API in a few lines
+
+No OpenAPI document? Write the endpoints down and register them:
+
+```yaml
+# ~/.config/apic/defs/pet.yaml
+operations:
+  users:
+    get: /api/users
+    summary: list users
+    query: [keyword, page, size]
+  user:
+    get: /api/users/{id}             # --id is required
+  create-user:
+    post: /api/users
+```
+
+```bash
+apic site add pet --def ~/.config/apic/defs/pet.yaml --base-url http://127.0.0.1:8080
+apic ops pet
+apic pet users --keyword tom
+apic pet user --id 7
+apic pet create-user -f name=tom -f age:=3      # {"name":"tom","age":3}
+```
+
+### Read a list as a table
+
+```bash
+apic pet users --pick 'data.list.*.{id,name,dept=dept.name}' -o table
+# id  name  dept
+# 1   tom   dev
+apic pet users --pick data.total                         # 42
+apic pet users --pick 'total=data.total,first=data.list.0.name'   # {"total":42,"first":"tom"}
+```
+
+### Fetch every page
+
+Add `paginate` to the site once:
+
+```yaml
+sites:
+  pet:
+    paginate: {page: page, size: size, items: data.list, total: data.total}
+```
+
+```bash
+apic pet users --all-pages --pick '*.{id,name}' -o table   # paths start at the merged array
+apic pet users --size 100 --max-pages 5                    # at most 5 pages; warns if more remain
+apic pet users --all-pages | jq length
+```
+
+With `--all-pages` the output is the merged `data.list` of every page, so the
+`data.list.` prefix is dropped from `--pick`.
+
+### Use it in scripts
+
+```bash
+name=$(apic pet user --id 7 --pick data.name)   # strings print bare: tom
+apic pet user --id 999 >/dev/null 2>&1; echo $?  # 4 (HTTP 4xx)
+```
+
+Branch on the [exit codes](#output-and-exit-codes): 3 network, 4 HTTP 4xx,
+5 HTTP 5xx, 6 refused by write protection, 7 the call succeeded but `--pick` or `-o` failed (do not retry).
+
+### Guard production
+
+```yaml
+    envs:
+      dev:  {base_url: http://127.0.0.1:8080}
+      prod: {base_url: https://pet.example.com, protect: true}
+```
+
+```bash
+apic pet users --env prod                          # reads are allowed
+apic pet create-user --env prod -f name=tom        # exit 6: POST on a protected environment requires --yes
+apic pet create-user --env prod -f name=tom --yes
+```
+
+### Keep tokens out of the config
+
+```yaml
+    auths:
+      admin: {type: bearer, token: "${env:PET_TOKEN}"}             # from .env or the shell
+      vault: {type: bearer, token: "${exec:pass show pet/token}"}  # from a password manager
+```
+
+```bash
+apic pet users --auth vault
+```
+
+### See what is sent
+
+```bash
+apic pet create-user -f name=tom --dry-run   # the curl command, token shown as ***
+apic pet user --id 7 -v -i                   # request and response headers on stderr
+apic pet -X GET /api/users/7 -H 'X-Trace: 1' # a path that is not in the definition
+```
+
+### Shortcuts and AI agents
+
+```bash
+apic link pet --name petctl && petctl users --keyword tom
+apic skill          # SKILL.md teaching an agent to use apic
+apic skill pet      # SKILL.md for the pet site
+```
 
 ## Configuration
 
