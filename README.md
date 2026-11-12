@@ -36,8 +36,12 @@ secrets masked everywhere.
   (`.cmd` on Windows)
 - Shell completion (bash, zsh, PowerShell) for sites, operations, parameters,
   enum values and `--env`/`--auth`, including shortcut commands
-- `--pick data.items.*.id` extracts values from a JSON response; `-o yaml` and
+- `--pick 'data.{id,name},code'` extracts values from a JSON response: comma
+  separated items from the root, `{...}` groups, `alias=path`; `-o yaml` and
   `-o table` reformat it, keeping numbers and field order intact
+- `--all-pages` follows a paginated list (site `paginate` configuration) and
+  merges the pages into one array
+- `apic use <site> --clear` drops the saved environment and authentication
 - `apic skill pet` generates a `SKILL.md` that teaches an AI agent to use the site
 - `exec` authentication: get the token from an external command (vault, SSO CLI…)
 - Overlays: rename, hide or fix operations and parameters in `overlays/<site>.yaml`
@@ -76,7 +80,8 @@ apic pet list-users --dry-run                   # print the curl command only
 
 `-f key=value` sends a string, `-f key:=<json>` sends a typed JSON value and
 `-f a.b=v` builds nested objects. A parameter whose name clashes with a global
-option is passed with `-p name=value` (or `-p query.name=value`).
+option is passed with `-p name=value` (or `-p query.name=value`); `all-pages`
+and `max-pages` are reserved option names too.
 
 ## Configuration
 
@@ -119,6 +124,7 @@ sites:
 
 ```bash
 apic use pet --env prod --auth ro        # switch the current selection
+apic use pet --clear                     # drop the saved environment and auth
 apic pet list-users --env dev --auth me  # override for one request
 apic auth status pet                     # login state (token never printed)
 ```
@@ -193,6 +199,56 @@ apic jenkins job-build --name demo --BRANCH main
 A ready-to-copy read-only GitLab site (definition, site file with a
 `PRIVATE-TOKEN` auth, sample commands) is in [examples/gitlab](examples/gitlab/).
 
+### Pagination
+
+```yaml
+sites:
+  gitlab:
+    paginate:
+      page: page          # query parameter of the page number (required)
+      size: per_page      # query parameter of the page size (optional)
+      size_value: 100     # sent when the call gives no size (needs `size`)
+      start: 1            # first page, default 1; 0 is allowed
+      items: data.list    # path of the list inside the body; empty: the body is the list
+      total: data.total   # optional path of the total count
+```
+
+```bash
+apic gitlab projects --all-pages --pick '*.{id,path_with_namespace}' -o table
+apic gitlab projects --per_page 100 --max-pages 3
+```
+
+- `--all-pages` walks the pages; without it nothing changes. `--max-pages N`
+  sets the limit and implies `--all-pages`.
+- Only GET calls are paginated. A site without `paginate`/`page`, a non-GET
+  call or a page/size value that is not an integer exits 2. These checks run
+  before the authentication is resolved, so no `${exec:}` or `exec` command
+  runs for a usage error.
+- The page and size parameters need no declaration: give them with
+  `-p <name>=` or `-p query.<name>=`, or let `page`/`size_value` fill them in.
+- Every page is a normal request: write protection, authentication, the 401
+  retry and `--timeout` apply per page; the `insecure` warning is printed once.
+- The merged array is the response body, so `--pick` paths are relative to it
+  (`*.{id,name}`, not `data.list.*.{id,name}`). Status and headers come from the
+  last page, so `-i` shows a `Content-Length` that does not match the body.
+- The run stops on an empty page, when `total` says everything is collected, or
+  when a page has fewer items than the first page returned. The first page is
+  the reference because servers cap the size they return.
+- Two adjacent pages with the same non-empty list exit 7,
+  `page N repeats page N-1; check paginate.page`; it catches a wrong page
+  parameter name.
+- A non-2xx page stops the run: that page is printed as usual, earlier pages
+  are dropped, stderr gets `note: page N returned HTTP ...` and the exit code
+  follows the status (`3xx` counts as 7). A 2xx page that is not JSON, whose
+  `items` is not an array or whose `total` is not an integer exits 7.
+- At the limit: with an explicit `--max-pages` the pages collected so far are
+  printed with `warning: stopped after N pages (--max-pages); more may exist`
+  and exit 0; at the default limit of 100 pages nothing is printed and the run
+  exits 7, so a truncated list never looks complete.
+- `--dry-run` prints the curl command of the first page only and notes that
+  further pages would be requested. All pages stay in memory, so the worst case
+  is pages × `--timeout`.
+
 ### Token from an external command (`exec`)
 
 ```yaml
@@ -215,6 +271,59 @@ Its argv never appears in any output. On a 401 the command runs again once.
 > commands, so treat them like scripts and do not import untrusted site files.
 > On Windows the 0600 permission of the token cache is not enforced, and
 > arguments with `& | < > ^ % ! "` are refused when the command is a `.bat`/`.cmd`.
+
+### Credential values from a command (`${exec:}`)
+
+```yaml
+auths:
+  pat:
+    type: apikey
+    in: header
+    name: PRIVATE-TOKEN
+    value: ${exec:pass show gitlab/token}
+  ad:
+    type: login
+    login:
+      body: {username: me, password: "${exec:powershell -NoProfile -File bin/secret.ps1 ad}"}
+```
+
+`${exec:command arg...}` runs a command and uses its stdout. It is allowed in
+credential values only: `token`, `password`, `value`, the values of `exec.env`
+and the strings of `login.body`. Anywhere else (`exec.command`, `apply.value`,
+`login.apply.value`, `token.path`, `allow_methods`, `username`, ...) it exits 1
+before anything runs. The text is split on whitespace — no shell, no quoting,
+no escaping — and may not be empty or contain `${`. It can be mixed with text
+and `${env:NAME}`, as in `"Bearer ${exec:get-token}"`.
+
+- Only the authentication a call selects is resolved, so references in other
+  identities never run. Each reference runs at most once per process; a failure
+  is not cached.
+- It runs when the credential is needed: a site call, `auth login`, `auth
+  status`, `auth logout`, and — when the definition has to be fetched with
+  `source.auth` — `ops`, `desc`, `skill`, `overlay init`, `site add`,
+  `site refresh` and site calls, including `--dry-run`. Completion, `site show`,
+  `auth ls`, `config check` and `link` never run it.
+- Fixed 30s timeout (unrelated to `--timeout`), empty stdin, the parent
+  environment (no `APIC_*` variables) and the config dir as working directory,
+  so relative paths resolve there.
+- stdout must be one line: trailing `\r`/`\n` are stripped, inner leading and
+  trailing spaces are kept. An empty value or a control character exits 1; wrap
+  a script if the command prints more than one line.
+- The value is registered as a secret. Values shorter than 4 characters are not
+  masked in any output.
+- `--dry-run` does not run it: a custom header, query or body shows the
+  placeholder `<exec>`, while a header that is masked anyway (`Authorization`,
+  `Cookie`) shows `***`.
+- A failure exits 1 with
+  `auth "pat" value: ${exec:} failed (exit 3): <last stderr line>`; the command
+  text never appears in a message.
+- `config check` prints `runs ${exec:}` for every reference and reports the
+  misplaced and the unclosed ones.
+
+> **Rolling back to v0.4.x:** turn every `${exec:...}` back into `${env:...}`
+> first. v0.4 sends the command text as the credential (for an `apikey` in the
+> query it also reaches access and proxy logs), and its `config check` says
+> nothing about it.
 
 ## Fixing a definition with an overlay
 
@@ -310,21 +419,42 @@ runs `exec` commands. Known limit: after an option value
 ## Picking and formatting output
 
 ```bash
-apic pet list-users --pick data.items.*.name     # ["tom","amy"]
-apic pet get-user --id 7 --pick data.name        # tom   (strings print bare)
-apic pet list-users --pick data.items -o table
+apic pet list-users --pick data.items.*.name            # ["tom","amy"]
+apic pet get-user --id 7 --pick data.name               # tom   (strings print bare)
+apic pet list-users --pick 'data.items.*.{id,name}' -o table
+apic pet me --pick 'code,data.username'                 # {"code":0,"username":"u"}
+apic pet me --pick 'data.{username,id},code'            # {"username":"u","id":7,"code":0}
+apic pet me --pick 'uid=data.id,code'                   # {"uid":7,"code":0}
 apic pet list-users -o yaml
 ```
 
-A path is dot separated: keys, array indexes (`items.0`) and `*` (every element;
-missing fields become `null`, an empty array gives `[]`). The last segment may
-be a projection `a,b`, which builds an object from those keys in the given
-order (missing keys are `null`): `--pick data.items.*.id,name -o table` prints
-two columns. A projection needs an object; put `.*` before it for arrays.
-Keys in a projection are relative to the parent: write `data.username,id`,
-not `data.username,data.id`.
-`--pick`, `-o yaml`
-and `-o table` apply to 2xx responses only; other responses print unchanged.
+A path is dot separated: keys, array indexes (`items.0`) and `*` (every
+element; a missing field becomes `null`, an empty array gives `[]`).
+
+- **Items**: `--pick` is a list of comma separated items and each item starts
+  at the root, so `code,data.username` reaches both levels in one call.
+- **Groups**: the last segment of a path may be `{...}`; its items are relative
+  to that prefix. `data.{username,id},code` gives three keys in one object, and
+  `data.items.*.{id,name}` gives an array of objects (two table columns).
+- **Aliases**: `alias=path` renames the key (`uid=data.id`); an alias may use
+  `[A-Za-z0-9_-]` only.
+- **Key names**: the alias, else the last key segment (`0.name` gives `name`).
+  A path without a key segment (`*`, `0`) needs an alias; duplicate keys in one
+  object are a usage error.
+- **Missing values**: a single item that is not an expandable group exits 7
+  when the path is missing, exactly like a plain path. With several items, or
+  inside a group, a missing path is `null`; under `*` a bad element is `null`
+  too.
+- **Syntax errors exit 2 before the request**: empty item or segment, unbalanced
+  braces, a group that is not the last segment, a leading or trailing comma.
+- **`-o table`** on something that is not an array of objects falls back to JSON
+  with a note. `--pick`, `-o yaml` and `-o table` apply to 2xx responses only;
+  other responses print unchanged.
+
+**Not compatible with v0.4.0** (the old projection is gone): `data.items.*.id,name`
+now means two items, both read from the root, so write `data.items.*.{id,name}`.
+"A literal key wins over a projection" no longer exists, and a key containing
+`.` `,` `=` `{` or `}` cannot be picked at all.
 
 ## Generating a skill for AI agents
 
