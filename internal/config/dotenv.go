@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 
 	"github.com/inhere/apic/internal/model"
 )
@@ -77,6 +78,31 @@ func validEnvKey(key string) bool {
 // Env holds variables read from the config directory's .env only.
 type Env struct {
 	Values map[string]string
+	// Exec runs one ${exec:...} reference; nil reports it as not available.
+	Exec func(argv []string) (string, error)
+
+	// execMu guards execCache, which deduplicates ${exec:} references within one
+	// process. Both are filled on first use so a zero Env works too.
+	execMu    sync.Mutex
+	execCache map[string]string
+}
+
+// cachedExec returns the output already produced for the reference text ref.
+func (e *Env) cachedExec(ref string) (string, bool) {
+	e.execMu.Lock()
+	defer e.execMu.Unlock()
+	value, ok := e.execCache[ref]
+	return value, ok
+}
+
+// rememberExec stores the output of ref. A failure is never stored.
+func (e *Env) rememberExec(ref, value string) {
+	e.execMu.Lock()
+	defer e.execMu.Unlock()
+	if e.execCache == nil {
+		e.execCache = make(map[string]string)
+	}
+	e.execCache[ref] = value
 }
 
 // LoadEnv never consults the working directory's .env file.
