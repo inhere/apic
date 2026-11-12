@@ -1,7 +1,7 @@
 <!-- template_id: plan; template_version: 1.3.1 -->
 # apic 二期第四批（pick 分组、分页、use --clear、拉取跟随 --env、${exec:}）实施计划
 
-> 状态：Draft 0.2 / 待人工计划批准（0.2 为第 1 轮评审后的未复核修订）
+> 状态：Draft 0.3 / 待人工计划批准（0.2 已于 2026-11-12 批准并开始实施：“批准 apic 二期第四批计划 0.2（接受未复核修订）；开始实施，使用 suga 的 oc-go/cmdc ds4.1 交替使用”。0.3 只追加 B7 与 T06d，其余不变；0.2、0.3 为未复核修订）
 
 ## 修订记录
 
@@ -9,6 +9,7 @@
 |---|---|---|---|
 | 0.1 | 2026-11-12 | Claude（inhere：“按 data.{a,b},c 改 pick；批准 apic 二期第四批设计 0.3（接受未复核修订）”） | 初稿：3 个波次、7 个任务，覆盖设计 0.3 的五项 |
 | 0.2 | 2026-11-12 | Claude | 处理第 1 轮两轴评审（两个方向均 PASS；纠正 P1–P13、Q1–Q9；建议若干）：<br>• B4 改用单个 TLS 服务端，用有无 `ca_file` 区分环境；<br>• `${exec:}` 的工作目录改在 wiring 层验证；<br>• 认证不运行的断言只针对调用所用的认证，并预热定义缓存；<br>• 执行器返回 stderr 与结构化失败，复用 `lastLine` 的清洗，保留批处理检查；<br>• 失败消息格式按设计；<br>• 未闭合的 `${exec:` 报错；放错位置先检查、再展开；<br>• `${env:}` 保持非空名字；<br>• `config check` 遮蔽 `${exec:}` 命令；<br>• pick 补四条未定规则（P11）；<br>• `SizeValue` 改指针，导出 `IsPlainPath`；<br>• 同步改三个现有测试文件；<br>• `use --clear` 处理未知站点；<br>• real-env 先 dry-run、try/finally 清理、TMP 指向沙箱；<br>• 发布说明逐条对照设计的行为变化 |
+| 0.3 | 2026-11-12 | Claude（inhere：skill 生成加 apic 自身的使用说明，含简易定义格式与示例） | 对应设计 0.4 §6：追加验收 B7、任务 T06d（W2，T06c 之后）；执行方式按实际记为 suga 串行（见进度记录） |
 
 > 仅语义变化递增版本；纯 identity/provenance/元数据纠正沿用原版本，并在 Git/进度记录中留痕。
 
@@ -144,6 +145,13 @@
 
      证据中不记 base_url 与 token。
 
+7. **B7 apic 自身的 skill**（设计 0.4 §6）：
+   - 经 `commands.Run`：`apic skill --out <tmp>` 写出 `<tmp>/apic/SKILL.md`，stdout 为该路径；`--name x` 改目录名；已有文件没有标记行时不覆盖，`--force` 覆盖；`apic skill pet` 的行为与现有用例一致。
+   - 配置目录不存在、或 `config.yaml` 无法解析时，`apic skill --out <tmp>` 仍成功（不读配置）。
+   - 内容：frontmatter 合法（name、description）、标记行、版本号；含简易定义一节与完整示例。
+   - 防漂移：`globalSpec` 的每个全局选项名、简易定义的每个字段名（反射 `spec` 中简易定义结构体的 yaml tag）、`model` 的每个退出码都在模板中出现；模板中的简易定义示例写入临时文件后能被 `spec.SimpleLoader` 加载。
+   - 不泄露：在含站点、`.env` 与 token 的配置目录下生成，输出中不含这些站点名、base_url 与 token。
+
 ## 范围、排除项与授权
 
 **范围**：仓库 `inhere-tools/apic`（Git root）下的代码、README 和 docs。
@@ -216,7 +224,7 @@
 | 波次 | 任务 | 依赖 |
 |---|---|---|
 | W1 领域 | T01 → T02 → T03；T04 → T05 | T02 用 T01 导出的 `IsPlainPath`；T03 用 T02 的 `model.Paginate`；T05 用 T04 新增的 `model.ExecFailure` 与 `Env.Exec` |
-| W2 接线 | T06 | T01–T05 |
+| W2 接线 | T06（a/b/c 三次执行）→ T06d | T01–T05 |
 | W3 验收 | T07 | T01–T06 |
 
 **执行方式**：
@@ -459,6 +467,18 @@
   - 分层测试、`go vet ./...` 通过。
 - 依赖：T01–T05。
 
+### T06d apic 自身的 skill（设计 0.4 §6）
+
+- 文件：`internal/skillgen/self.go`、`internal/skillgen/self.md`（嵌入模板）、`internal/skillgen/self_test.go`、`internal/commands/skill.go`、`internal/commands/skill_self_test.go`、`internal/spec/simple_doc_test.go`（防漂移，只加测试）、`README.md`、`README.zh-CN.md`（“为 AI agent 生成 skill”一节）。
+- 动作：
+  - `skillgen.RenderSelf(version string) ([]byte, error)`：用 `embed` 的模板填入版本号，输出带 frontmatter 与 `Marker` 的完整 SKILL.md；`skillgen` 仍只依赖 `model`。
+  - `skill` 命令站点参数改为可选：没有站点时不调用 `wiring.Load`，目录默认取 `config.Dir()` 下的 `skills`（取不到时要求 `--out`，退出 2），名字默认 `apic`，经 `skillgen.Write` 写入；stderr 提示 `skillc install` 的用法。带站点时行为不变。
+  - 模板按设计 §6“内容”九项写；示例只用占位站点 `pet` 与 `example.com`。
+  - 防漂移测试按 B7。
+- 验证：`go test ./internal/skillgen/ ./internal/commands/ ./internal/spec/ -count=1`，覆盖 B7 各条。
+- 完成标准：B7 通过；分层测试通过；`grep -rn` 模板不含内部主机名与用户目录。
+- 依赖：T06c（同改 README 与 skillgen）。
+
 ### T07 验收、兼容性与发布说明草稿
 
 - 文件：`docs/release-notes/v0.5.0.md`（新）、本计划的进度记录；验收产物在 `<WP>/tmp/apic-p2d-accept/`。
@@ -514,6 +534,7 @@
 | §5 `${exec:}`：一次扫描、白名单、执行器、dry-run、去重、check；D9、D10 | T04、T05、T06 | T04、T05、T06 测试；B5、B6 real-env |
 | 安全：注入、未闭合引用、密钥登记、不执行的入口、失败消息清洗 | T04、T05、T06 | B5 |
 | 行为变化与回滚 | T06（README）、T07 | 发布说明；B6 compat |
+| §6 apic 自身的 skill；D12 | T06d | B7 |
 | 工程规范 GR104、GR108–GR110、SR2002、SR2003 | 全部任务 | 分层测试；B6 |
 
 ## 评审处理（第 1 轮）

@@ -1,7 +1,7 @@
 <!-- template_id: design; template_version: 1.2.0 -->
 # apic 二期第四批：跨层取值、分页、清除选择、拉取定义跟随 --env、${exec:} 设计
 
-> 状态：Draft 0.3 / 已批准（用户 2026-11-12：“按 data.{a,b},c 改 pick；批准 apic 二期第四批设计 0.3（接受未复核修订）”；0.2、0.3 为第 1 轮评审后的未复核修订；批准只授权编写实施计划，不授权实施）
+> 状态：Draft 0.4 / 待批准（0.3 已于 2026-11-12 批准：“按 data.{a,b},c 改 pick；批准 apic 二期第四批设计 0.3（接受未复核修订）”。0.4 只追加 §6 与 D12，§1–§5 不变；0.2–0.4 为未复核修订；批准只授权编写实施计划，不授权实施）
 
 ## 修订记录
 
@@ -10,6 +10,7 @@
 | 0.1 | 2026-11-12 | Claude（inhere：下一批做 1–4 + `${exec:}`，分页参数名在站点配置里定义） | 初稿：五项的根因与方案 |
 | 0.2 | 2026-11-12 | Claude | 处理第 1 轮两轴评审（阻塞 C1/S1、S2/C11）：<br>• 预扫描同时看站点前后的 `--env`；<br>• 短页判断以第一页的实际条数为准，相邻页重复报错；<br>• 达到默认上限时退出 7；<br>• `${exec:}` 与 `${env:}` 一次扫描、结果不再展开，`${exec:` 内含 `${` 报错；<br>• 超时固定 30s，不设 `APIC_*`；<br>• 如实列出会执行命令的入口；失败消息不含命令名；dry-run 用占位 `<exec>`；<br>• 根引用规则补全，含根引用的投影在解析阶段检查；<br>• 分页的输入规则、3xx 处理、选项注册位置；<br>• `--env` 只校验显式给出的值；<br>• `use --clear` 可清已删除站点的残留；<br>• 回滚说明补“命令文本会被当作凭证发出” |
 | 0.3 | 2026-11-12 | Claude（inhere：投影的 `id` 跟随上一级容易写错，按 `data.{a,b},c` 改 pick，无需兼容） | §1 改为“逗号分项从根取 + 末段 `{...}` 分组”，取消路径对象、根引用和 v0.4.0 投影；分页示例同步 |
+| 0.4 | 2026-11-12 | Claude（inhere：skill 生成加 apic 自身的使用说明，含简易定义格式与示例，方便其他机器的 agent 使用 apic） | 追加 §6“apic 自身的 skill”与 D12；§1–§5 不变 |
 
 > 仅语义变化递增版本；纯 identity/provenance/元数据纠正沿用原版本，并在 Git/进度记录中留痕。
 
@@ -77,6 +78,7 @@
 3. `apic use <site> --clear`。
 4. 拉取定义使用本次调用的 `--env`。
 5. 凭证值中的值引用 `${exec:}`。
+6. `apic skill` 不带站点时生成 apic 自身的使用说明 skill（0.4 追加）。
 
 非目标：
 
@@ -373,6 +375,35 @@ auths:
 - 字段为空时，引用报 `${exec:} is not available`。
 - 执行器从 `runExec` 中抽出，exec 认证改为调用它，行为与失败消息不变。
 
+### 6. apic 自身的 skill（0.4 追加）
+
+**背景**：`apic skill <site>` 只描述某个站点的操作。另一台机器上的 agent 拿到它，仍不知道 apic 怎么装配置、怎么加站点、简易定义怎么写、全局选项和退出码是什么。
+
+**命令**
+
+- `apic skill` 不带站点名时，生成 apic 自身的 skill：`<out>/<name>/SKILL.md`，默认名 `apic`，默认目录与站点 skill 相同（`<config dir>/skills`）。
+- 沿用 `--out`、`--name`、`--force` 以及标记行与原子写入规则（`skillgen.Write`）；`--max-ops` 不适用，给出时忽略。
+- 站点参数改为可选；带站点名时行为不变。
+- 不读取站点配置、`.env`、state 和定义缓存：配置目录不存在或配置有错时也能生成。
+
+**内容**（英文，静态模板随二进制发布，生成时只填入版本号）
+
+1. 用途与触发：什么时候用 apic（调用 HTTP API、查看操作、生成站点 skill）。
+2. 配置目录与文件：`APIC_CONFIG_DIR`、`config.yaml`、`sites/<name>.yaml`、`.env`、`state.yaml`、overlay、缓存；只描述布局，不列本机内容。
+3. 加站点：`site add` 的 OpenAPI URL、文件与简易定义三种来源。
+4. **简易定义格式**：`operations` 下每个操作的字段（`get/post/put/patch/delete/head`、`summary`、`output`、`query`、`params` 的 `name/in/required/type/desc/enum`、`body.type`），路径参数 `{id}` 的写法，并附一个完整示例（占位站点 `pet`）。
+5. 站点配置：`envs`（`base_url`、`protect`、`insecure`、`ca_file`、`auth`）、`auths` 的各类型（bearer、basic、apikey、login、exec）、`${env:}` 与 `${exec:}`、`paginate`。
+6. 调用：`apic <site> <op>`、生成的参数选项、`-p`、`-d`/`-f`/`-F`、原始路径 `-X`、`ops`、`desc`、`use`（含 `--clear`）、快捷命令。
+7. 输出：`-o`、`--pick` 分项与分组、`--all-pages`/`--max-pages`、`--dry-run`、`-v`、`-i`。
+8. 退出码表。
+9. 生成站点 skill：`apic skill <site>`。
+
+**约束**
+
+- 内容不含任何主机名、URL、凭证或本机站点名，生成结果可以直接复制到其他机器。
+- 防漂移：测试断言模板覆盖 `globalSpec` 中的全部全局选项、简易定义的全部字段名（取自 `spec` 的结构体 tag）以及全部退出码；模板中的简易定义示例要能被 `spec` 加载。新增选项或字段而未更新模板时测试失败。
+- 实现放在 `skillgen`（模板用 `embed`），`commands/skill.go` 只做分支；不新增包，依赖方向不变。
+
 ## 架构
 
 不新增包，依赖方向不变。
@@ -384,6 +415,7 @@ auths:
 | 3 | `commands/use.go` |
 | 4 | `commands/prescan.go`（返回最后一个 `--env`）；`commands/site.go` `loadIndex`/`loadSiteIndex`；`wiring.FetchOptions`；`commands/run.go` 调用点 |
 | 5 | `config/expand.go`（一次扫描两种引用、字段白名单、dry-run 占位、去重）；`config/dotenv.go` `Env` 加执行函数；`config/check.go`；`auth/exec.go` 抽出执行器；`wiring.Load` 注入 |
+| 6 | `skillgen` 新增 `self.go` 与嵌入模板 `self.md`；`commands/skill.go` 站点参数可选 |
 
 ## 关键流程
 
@@ -461,6 +493,7 @@ dry-run（ResolveAuthDryRun）：${exec:...} → <exec>，不执行
 | D9 | `${exec:}` 只在凭证值、只解析所选认证、一次扫描、不跨进程缓存、超时固定 30s、不设 `APIC_*` | 防注入；解析时没有调用上下文，最小实现 |
 | D10 | `${exec:}` 复用 exec 认证的执行器，经注入函数接入 config；失败消息不含命令文本 | 不重复实现进程管理；与 exec 认证的披露策略一致 |
 | D11 | 选项名用 `--all-pages`/`--max-pages` | `all` 更可能与操作参数撞名 |
+| D12 | `apic skill` 不带站点名时生成 apic 自身的 skill：静态英文模板，不读配置，用测试防漂移 | 用户 0.4 要求；可移植到其他机器；模板与代码同仓发布 |
 
 ## 评审处理
 
