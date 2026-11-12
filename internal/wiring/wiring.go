@@ -45,7 +45,11 @@ func Load() (*Deps, error) {
 		return nil, err
 	}
 	secrets := &model.Secrets{}
-	return &Deps{Dir: dir, Cfg: cfg, Env: env, State: state, Secrets: secrets, Redactor: &model.Redactor{Secrets: secrets}}, nil
+	redactor := &model.Redactor{Secrets: secrets}
+	// ${exec:} runs in the real config directory, even when a caller later swaps
+	// Deps.Dir for a temporary directory (site add).
+	env.Exec = auth.ExecValue(dir, redactor)
+	return &Deps{Dir: dir, Cfg: cfg, Env: env, State: state, Secrets: secrets, Redactor: redactor}, nil
 }
 
 // FetchOptions describes the transport and optional static spec authentication.
