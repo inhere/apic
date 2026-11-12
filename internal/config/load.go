@@ -126,7 +126,49 @@ func validateSite(dir, file, name string, site *model.Site) error {
 			}
 		}
 	}
+	if err := validatePaginate(file, name, site.Paginate); err != nil {
+		return err
+	}
 	site.Origin = file
+	return nil
+}
+
+// validatePaginate checks a site's paginate block: the page parameter is
+// mandatory, size_value needs a positive value and a size parameter, start may
+// not be negative, and items/total must name one plain path inside a page.
+func validatePaginate(file, name string, p *model.Paginate) error {
+	if p == nil {
+		return nil
+	}
+	bad := func(format string, a ...any) error {
+		return model.Errorf(model.ExitLocal, "%s site %q: paginate: %s", file, name, fmt.Sprintf(format, a...))
+	}
+	if p.Page == "" {
+		return bad("page is required")
+	}
+	if p.SizeValue != nil {
+		if *p.SizeValue <= 0 {
+			return bad("size_value must be a positive integer")
+		}
+		if p.Size == "" {
+			return bad("size_value requires size")
+		}
+	}
+	if p.Start != nil && *p.Start < 0 {
+		return bad("start must not be negative")
+	}
+	for _, item := range []struct{ key, path string }{
+		{"items", p.Items},
+		{"total", p.Total},
+	} {
+		if item.path == "" {
+			continue
+		}
+		pick, err := model.ParsePick(item.path)
+		if err != nil || !pick.IsPlainPath() {
+			return bad("%s must be a plain path", item.key)
+		}
+	}
 	return nil
 }
 
