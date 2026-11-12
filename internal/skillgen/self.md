@@ -81,7 +81,7 @@ optional fields below.
 |---|---|
 | `get`, `post`, `put`, `patch`, `delete`, `head` | Path of that method, e.g. `/pets/{id}`. Exactly one per operation. |
 | `summary` | One line shown by `apic ops` and in generated skills. |
-| `output` | `json` (default) or `raw` for a text response. |
+| `output` | Output format of this operation: `auto` (default), `json`, `raw`, `yaml` or `table`; `-o` overrides it. |
 | `query` | Shorthand list of optional string query parameters. |
 | `params` | Explicit parameters, see the table below. |
 | `body` | Request body; `body.type` is `json` (default), `form`, `multipart`, `xml` or `raw`. |
@@ -93,7 +93,7 @@ optional fields below.
 | `name` | Parameter name as the API expects it. |
 | `in` | `path`, `query` or `header`. |
 | `required` | `true` makes the parameter mandatory. |
-| `type` | `string` (default), `number`, `integer`, `boolean` or `array`. |
+| `type` | Value type hint, `string` when empty; shown by `apic desc`. |
 | `desc` | Description shown by `apic desc`. |
 | `enum` | Allowed values; compared as strings, numbers and booleans are converted (`1.0` is `"1"`). |
 
@@ -201,6 +201,11 @@ apic link pet --name petctl       # generate a petctl shortcut command
 - Operation parameters are options named after the parameter (`--id 7`,
   `--state available`); a name that clashes with a global option is passed as
   `-p name=value` (`-p query.name=value`).
+- The global options are accepted before the site name, after it and after the
+  operation: `--env`, `--auth`, `--output`/`-o`, `--pick`, `--include`/`-i`,
+  `--verbose`/`-v`, `--dry-run`, `--yes`, `--timeout`, `--header`/`-H`,
+  `--all-pages` and `--max-pages`. `--timeout` takes a Go duration (`10s`) or a
+  number of seconds.
 - `-p name=value` sets any parameter, `-f key=value` a body field (string),
   `-f key:=<json>` a typed JSON value, `-d @file` the whole body (`-` is stdin)
   and `-F name=@path` a multipart file field.
@@ -215,9 +220,10 @@ apic link pet --name petctl       # generate a petctl shortcut command
 
 stdout carries only the response body; diagnostics and warnings go to stderr.
 
-- `-o auto` (default) prints JSON as it arrives, `-o json` re-indents it,
-  `-o raw` prints the bytes untouched, `-o yaml` converts JSON to YAML and
-  `-o table` prints an array of objects as a table.
+- `-o auto` (default) prints the body as received and indents JSON only when
+  stdout is a terminal; `-o json` always indents, `-o raw` never touches the
+  bytes, `-o yaml` converts JSON to YAML and `-o table` prints an array of
+  objects as a table.
 - `--pick` extracts values from a 2xx JSON response. Items are comma separated
   and each starts from the root: `--pick code,data.username`.
 - A path is a sequence of keys, array indexes (`items.0`) and `*` for every
