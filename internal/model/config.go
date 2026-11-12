@@ -22,7 +22,28 @@ type Site struct {
 	DefaultEnv  string              `yaml:"default_env,omitempty"`
 	Auths       map[string]AuthSpec `yaml:"auths,omitempty"`
 	DefaultAuth string              `yaml:"default_auth,omitempty"`
+	Paginate    *Paginate           `yaml:"paginate,omitempty"`
 	Origin      string              `yaml:"-"` // config.yaml or sites/<name>.yaml
+}
+
+// Paginate describes the query parameters used to walk a list endpoint.
+// Page is required; Items and Total are pick paths inside one page.
+type Paginate struct {
+	Page      string `yaml:"page"`
+	Size      string `yaml:"size,omitempty"`
+	SizeValue *int   `yaml:"size_value,omitempty"`
+	Start     *int   `yaml:"start,omitempty"`
+	Items     string `yaml:"items,omitempty"`
+	Total     string `yaml:"total,omitempty"`
+}
+
+// StartPage returns the first page number: Start when it is written, else 1.
+// Start uses a pointer so that an explicit 0 stays distinct from "unset".
+func (p *Paginate) StartPage() int {
+	if p == nil || p.Start == nil {
+		return 1
+	}
+	return *p.Start
 }
 
 // Env describes a target API environment.
