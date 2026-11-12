@@ -65,7 +65,7 @@ func (p *Provider) Apply(ctx context.Context, req *http.Request, dry bool) error
 	case "exec":
 		return p.applyExec(ctx, req, dry)
 	default:
-		return p.applyStatic(req)
+		return p.applyStatic(req, dry)
 	}
 }
 

@@ -15,9 +15,6 @@ import (
 // is never scanned again; ${env:} keeps requiring a non-empty name.
 var valueRef = regexp.MustCompile(`\$\{(?:env:([^}]+)|exec:([^}]*))\}`)
 
-// execPlaceholder stands in for ${exec:...} in dry-run output.
-const execPlaceholder = "<exec>"
-
 // Expand replaces environment references and registers each resolved secret.
 func Expand(s string, env *Env, sec *model.Secrets) (string, error) {
 	return expand(s, env, sec, nil)
@@ -48,7 +45,7 @@ func expandCredential(s string, env *Env, sec *model.Secrets, missing map[string
 			return expandEnvRef(ref, env, sec, missing)
 		}
 		if missing != nil {
-			return execPlaceholder, nil
+			return model.ExecPlaceholder, nil
 		}
 		return env.execRef(strings.TrimSuffix(content, "}"), ref, sec, auth, label)
 	})
