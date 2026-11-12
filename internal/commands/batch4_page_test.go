@@ -289,7 +289,8 @@ func TestAllPages(t *testing.T) {
 		assert.Eq(t, 0, code, errOut)
 		assert.Eq(t, 8, strings.Count(out, `"name"`), out)
 		for _, q := range api.queries(t) {
-			assert.Eq(t, "2", q.Get("per_page"))
+			// Only the user's value is sent: size_value is not added next to it.
+			assert.Eq(t, []string{"2"}, q["per_page"])
 		}
 	})
 
