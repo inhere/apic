@@ -18,6 +18,8 @@ type globalOpts struct {
 	DryRun, Yes       bool
 	Timeout           string
 	Headers           []string
+	AllPages          bool
+	MaxPages          string
 }
 
 // siteOpts holds the options owned by the <site> command (-X -d -f -p).
@@ -31,6 +33,7 @@ type siteOpts struct {
 var reservedOptNames = map[string]bool{
 	"env": true, "auth": true, "output": true, "include": true, "verbose": true,
 	"dry-run": true, "yes": true, "timeout": true, "header": true, "pick": true,
+	"all-pages": true, "max-pages": true,
 	"help": true, "version": true, "gen-completion": true, "in-completion": true, "api": true,
 	"X": true, "d": true, "f": true, "F": true, "p": true, "o": true, "i": true, "v": true, "H": true, "h": true, "V": true,
 }
@@ -40,12 +43,14 @@ func (g *globalOpts) bind(fs *gflag.Flags) {
 	fs.StrOpt(&g.Env, "env", "", "", "Environment for this request only")
 	fs.StrOpt(&g.Auth, "auth", "", "", "Authentication for this request only")
 	fs.StrOpt(&g.Output, "output", "o", "", "Output format: auto, json, raw, yaml or table")
-	fs.StrOpt(&g.Pick, "pick", "", "", "Pick a value from a 2xx JSON response by path, e.g. data.items.*.id")
+	fs.StrOpt(&g.Pick, "pick", "", "", "Pick values from a 2xx JSON response by path, e.g. data.{id,name},code")
 	fs.BoolOpt(&g.Include, "include", "i", false, "Print status line and response headers to stderr")
 	fs.BoolOpt(&g.Verbose, "verbose", "v", false, "Print request line and headers to stderr (secrets masked)")
 	fs.BoolOpt(&g.DryRun, "dry-run", "", false, "Print the equivalent curl command without sending")
 	fs.BoolOpt(&g.Yes, "yes", "", false, "Confirm a write on a protected environment")
 	fs.StrOpt(&g.Timeout, "timeout", "", "", "Request timeout, e.g. 10s (plain numbers are seconds)")
+	fs.BoolOpt(&g.AllPages, "all-pages", "", false, "Request every page of a paginated list")
+	fs.StrOpt(&g.MaxPages, "max-pages", "", "", "Page limit for --all-pages (implies --all-pages)")
 	gflag.Opt(fs, &g.Headers, "header", "H", nil, "Extra request header 'Name: value' (repeatable)")
 }
 
@@ -71,6 +76,7 @@ func globalSpec() GlobalSpec {
 		"--env": true, "--auth": true, "--output": true, "-o": true,
 		"--include": false, "-i": false, "--verbose": false, "-v": false,
 		"--dry-run": false, "--yes": false, "--timeout": true, "--pick": true,
+		"--all-pages": false, "--max-pages": true,
 		"--header": true, "-H": true,
 	}}
 }
