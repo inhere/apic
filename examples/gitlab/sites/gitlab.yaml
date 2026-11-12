@@ -14,3 +14,5 @@ auths:
     value: ${env:GITLAB_TOKEN}
     allow_methods: [GET, HEAD]   # this token never sends writes
 default_auth: pat
+# --all-pages walks ?page=1,2,... until a short page (GitLab caps per_page at 100).
+paginate: {page: page, size: per_page, size_value: 100}

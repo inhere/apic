@@ -11,9 +11,10 @@ echo 'GITLAB_TOKEN=glpat-...' >> "$dir/.env"   # read_api scope is enough
 
 apic config check
 apic gitlab version
-apic gitlab projects --search apic --per_page 5 --pick '*.id,path_with_namespace' -o table
-apic gitlab mrs --id 123 --state opened --pick '*.iid,title,state' -o table
+apic gitlab projects --search apic --per_page 5 --pick '*.{id,path_with_namespace}' -o table
+apic gitlab mrs --id 123 --state opened --pick '*.{iid,title,state}' -o table
 apic gitlab projects --auth anon --search apic --per_page 3   # public data, no token
+apic gitlab branches --id 123 --all-pages --pick '*.name'      # every page, merged
 ```
 
 For a self-hosted GitLab change `base_url` in `sites/gitlab.yaml`, or add
