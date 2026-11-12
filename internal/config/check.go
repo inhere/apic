@@ -100,7 +100,11 @@ func checkBody(value any, path string, warnings *[]string) {
 		}
 	case []any:
 		for i, child := range v {
-			checkBody(child, fmt.Sprintf("%s[%d]", path, i), warnings)
+			label := fmt.Sprintf("%s[%d]", path, i)
+			if text, ok := child.(string); ok {
+				*warnings = append(*warnings, checkExec(label, text, true)...)
+			}
+			checkBody(child, label, warnings)
 		}
 	}
 }

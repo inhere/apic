@@ -207,6 +207,14 @@ func TestExecRefMalformed(t *testing.T) {
 		assert.Eq(t, 0, stub.calls)
 	})
 
+	t.Run("a closed reference in front of an unclosed one does not run", func(t *testing.T) {
+		env, stub := newExecEnv(t)
+		site := &model.Site{Auths: map[string]model.AuthSpec{"pat": {Type: "bearer", Token: "${exec:get-token} ${exec:get-token"}}}
+		_, err := resolveOne(site, env, &model.Secrets{})
+		assert.Eq(t, `auth "pat" token: malformed ${exec:} reference`, err.Error())
+		assert.Eq(t, 0, stub.calls)
+	})
+
 	t.Run("empty or nested content", func(t *testing.T) {
 		for _, content := range []string{"${exec:}", "${exec:echo ${env:EXEC_VAR}}"} {
 			t.Run(content, func(t *testing.T) {
@@ -318,7 +326,7 @@ func TestCheckExecRef(t *testing.T) {
 	cfg := &model.Config{Sites: map[string]*model.Site{"pet": {Auths: map[string]model.AuthSpec{
 		"pat":  {Type: "apikey", In: "header", Name: "X-Key", Value: "Bearer ${exec:pass show pet/token}"},
 		"sso":  {Type: "exec", Exec: model.ExecSpec{Command: []string{"${exec:get-token}"}}},
-		"bad":  {Type: "basic", Username: "${exec:whoami}", Login: model.LoginSpec{Body: map[string]any{"password": "${exec:get-pass}"}}},
+		"bad":  {Type: "basic", Username: "${exec:whoami}", Login: model.LoginSpec{Body: map[string]any{"password": "${exec:get-pass}", "list": []any{"${exec:get-item}"}}}},
 		"open": {Type: "bearer", Token: "${exec:get-token"},
 	}}}}
 	warnings := config.Check(cfg)
@@ -329,6 +337,7 @@ func TestCheckExecRef(t *testing.T) {
 		"site pet auth sso: runs ***",
 		"site pet auth bad username: ${exec:} is only allowed in credential values",
 		"site pet auth bad login.body.password: runs ${exec:}",
+		"site pet auth bad login.body.list[0]: runs ${exec:}",
 		"site pet auth open token: malformed ${exec:} reference",
 	} {
 		t.Run(want, func(t *testing.T) {
@@ -338,7 +347,7 @@ func TestCheckExecRef(t *testing.T) {
 	// A mixed value is a reference, so it is not reported as plaintext.
 	assert.False(t, strings.Contains(joined, "plaintext credential"))
 	// No hint ever holds the command text.
-	for _, secret := range []string{"pass show", "get-pass", "whoami", "get-token"} {
+	for _, secret := range []string{"pass show", "get-pass", "get-item", "whoami", "get-token"} {
 		assert.False(t, strings.Contains(joined, secret))
 	}
 }
