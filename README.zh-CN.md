@@ -28,7 +28,9 @@
   - `allow_methods` 可以把某个认证限制为只读
 - 快捷命令：`apic link pet --name petctl` 生成 `petctl` 脚本（Windows 上同时生成 `.cmd`）
 - shell 补全（bash、zsh、PowerShell）：站点、操作、参数、枚举值和 `--env`/`--auth` 的取值，快捷命令也能补全
-- `--pick data.items.*.id` 从 JSON 响应里取值；`-o yaml`、`-o table` 换格式，数字和字段顺序保持原样
+- `--pick 'data.{id,name},code'` 从 JSON 响应里取值：逗号分项从根取，`{...}` 分组，`别名=路径`；`-o yaml`、`-o table` 换格式，数字和字段顺序保持原样
+- `--all-pages` 按站点 `paginate` 配置翻页，把各页合并成一个数组
+- `apic use <site> --clear` 清除保存的环境和认证
 - `apic skill pet` 生成 `SKILL.md`，教 AI agent 使用这个站点
 - `exec` 认证：从外部命令（vault、SSO 工具等）取 token
 - overlay：在 `overlays/<site>.yaml` 里给操作改名、隐藏操作、修正参数，不用改上游 spec
@@ -69,7 +71,7 @@ apic pet list-users --dry-run                   # 只打印 curl 命令
 - `-f key:=<json>` 按 JSON 类型传值；
 - `-f a.b=v` 拼出嵌套对象。
 
-参数名与全局选项重名时，用 `-p name=value` 或 `-p query.name=value` 传入。
+参数名与全局选项重名时，用 `-p name=value` 或 `-p query.name=value` 传入。`all-pages`、`max-pages` 也是保留的选项名。
 
 ## 配置
 
@@ -112,6 +114,7 @@ sites:
 
 ```bash
 apic use pet --env prod --auth ro        # 切换当前选择
+apic use pet --clear                     # 清除保存的环境和认证
 apic pet list-users --env dev --auth me  # 只对这一次请求覆盖
 apic auth status pet                     # 查看登录状态（不会输出 token）
 ```
@@ -168,6 +171,36 @@ apic jenkins job-build --name demo --BRANCH main
 
 可直接复制使用的只读 GitLab 站点（定义文件、带 `PRIVATE-TOKEN` 认证的站点文件、示例命令）见 [examples/gitlab](examples/gitlab/)。
 
+### 分页
+
+```yaml
+sites:
+  gitlab:
+    paginate:
+      page: page          # 页码参数名（必填）
+      size: per_page      # 每页条数参数名（可选）
+      size_value: 100     # 用户没给条数时自动带上的值（需要 size）
+      start: 1            # 首页页码，默认 1，允许 0
+      items: data.list    # 列表在响应中的路径；不写表示响应本身就是数组
+      total: data.total   # 总数在响应中的路径（可选）
+```
+
+```bash
+apic gitlab projects --all-pages --pick '*.{id,path_with_namespace}' -o table
+apic gitlab projects --per_page 100 --max-pages 3
+```
+
+- **开启方式**：`--all-pages` 翻页，不加时行为不变；`--max-pages N` 设置上限，并隐含 `--all-pages`。
+- **前提检查**：只支持 GET；站点没配 `paginate`/`page`、方法不是 GET、页码或条数不是整数，都退出 2。这些检查在解析认证之前做，所以用法错误不会去跑 `${exec:}` 或 `exec` 命令。
+- **参数**：页码和条数不需要操作声明，用 `-p <名>=` 或 `-p query.<名>=` 传入；没给时用 `page`/`size_value` 自动补上。
+- **每页都是普通请求**：写保护、认证、401 重试和 `--timeout` 都按页生效；`insecure` 告警只打印一次。
+- **合并结果**：合并后的数组就是响应体，`--pick` 的路径相对它（写 `*.{id,name}`，不是 `data.list.*.{id,name}`）。状态码和响应头取最后一页，所以 `-i` 的 `Content-Length` 与合并后的 body 不一致。
+- **停止条件**：本页 0 条；配了 `total` 时已取够总数；没配 `total` 时本页条数少于第一页实际返回的条数（服务端常会限制条数，所以以第一页为准）。
+- **重复页**：相邻两页的非空列表完全相同则退出 7，提示 `page N repeats page N-1; check paginate.page`，用来发现页码参数名写错。
+- **某页失败**：非 2xx 时停止，该页原样输出，前面的页丢弃，stderr 提示 `note: page N returned HTTP ...`，退出码按状态码映射（3xx 算 7）。2xx 但不是 JSON、`items` 不是数组或 `total` 不是整数时退出 7。
+- **上限**：显式 `--max-pages` 截断时，已取到的结果显示出来，stderr 提示 `warning: stopped after N pages (--max-pages); more may exist`，退出 0；默认上限 100 页截断时什么都不输出，退出 7，避免脚本把截断的列表当成完整结果。
+- **dry-run**：只打印第一页的 curl 命令，并提示还会请求后续页。全部页都留在内存里，最坏耗时是页数乘 `--timeout`。
+
 ### 由外部命令提供 token（`exec`）
 
 ```yaml
@@ -189,6 +222,34 @@ auths:
 > **安全提示**：
 > - **配置文件等同脚本**：有了 `exec`，`config.yaml` 和 `sites/*.yaml` 都能让 apic 执行命令，不要导入不信任的站点文件。
 > - **Windows 限制**：token 缓存的 0600 权限不生效；命令是 `.bat`/`.cmd` 时，含 `& | < > ^ % ! "` 的参数会被拒绝。
+
+### 凭证值来自命令（`${exec:}`）
+
+```yaml
+auths:
+  pat:
+    type: apikey
+    in: header
+    name: PRIVATE-TOKEN
+    value: ${exec:pass show gitlab/token}
+  ad:
+    type: login
+    login:
+      body: {username: me, password: "${exec:powershell -NoProfile -File bin/secret.ps1 ad}"}
+```
+
+`${exec:命令 参数...}` 执行命令并取其 stdout。只能用凭证值中：`token`、`password`、`value`、`exec.env` 的值、`login.body` 里的字符串。放在其他字段（`exec.command`、`apply.value`、`login.apply.value`、`token.path`、`allow_methods`、`username` 等）会在执行任何东西之前退出 1。内容按空白切分，不经过 shell，不支持引号和转义；内容为空或含 `${` 会报错。可以和文字、`${env:NAME}` 混写，如 `"Bearer ${exec:get-token}"`。
+
+- **只解析被选中的认证**：其他认证里的引用不会执行。同一引用在一个进程内最多执行一次；失败不缓存。
+- **会执行的入口**：站点调用、`auth login`、`auth status`、`auth logout`，以及需要拉取定义且配了 `source.auth` 时的 `ops`、`desc`、`skill`、`overlay init`、`site add`、`site refresh` 和站点调用（含 `--dry-run`）。补全、`site show`、`auth ls`、`config check`、`link` 创建不执行。
+- **运行方式**：超时固定 30s（与 `--timeout` 无关），stdin 为空，环境变量继承父进程（不设 `APIC_*`），工作目录是配置目录，所以相对路径以配置目录为基准。
+- **输出要求**：只能是一行，末尾的 `\r`/`\n` 会去掉，首尾空格保留。结果为空或含控制字符退出 1；命令输出多行时请包一层脚本。
+- **脱敏**：结果登记为密钥；少于 4 个字符的结果不会在任何输出里打码。
+- **dry-run**：不执行，自定义头、query 或请求体里显示占位 `<exec>`；本来就整体遮蔽的头（`Authorization`、`Cookie`）显示 `***`。
+- **失败**：退出 1，消息为 `auth "pat" value: ${exec:} failed (exit 3): <stderr 最后一行>`，命令文本不会出现在任何消息里。
+- **config check**：每处 `${exec:}` 输出 `runs ${exec:}`；放错位置和未闭合的引用也会提示。
+
+> **回滚到 v0.4.x**：先把所有 `${exec:...}` 改回 `${env:...}`。v0.4 会把命令文本当作凭证发出去（`apikey` 放在 query 时还会进访问日志和代理日志），它的 `config check` 也不会提示。
 
 ## 用 overlay 修正定义
 
@@ -252,16 +313,26 @@ eval "$(apic link ls --completion bash)"    # 快捷命令；link / link rm 之�
 ## 取值与换格式
 
 ```bash
-apic pet list-users --pick data.items.*.name     # ["tom","amy"]
-apic pet get-user --id 7 --pick data.name        # tom（字符串不带引号）
-apic pet list-users --pick data.items -o table
+apic pet list-users --pick data.items.*.name            # ["tom","amy"]
+apic pet get-user --id 7 --pick data.name               # tom（字符串不带引号）
+apic pet list-users --pick 'data.items.*.{id,name}' -o table
+apic pet me --pick 'code,data.username'                 # {"code":0,"username":"u"}
+apic pet me --pick 'data.{username,id},code'            # {"username":"u","id":7,"code":0}
+apic pet me --pick 'uid=data.id,code'                   # {"uid":7,"code":0}
 apic pet list-users -o yaml
 ```
 
 - **路径写法**：路径用点号分段，段可以是键名、数组下标（`items.0`）或 `*`。
 - **`*` 的规则**：`*` 表示每个元素，缺少的字段填 `null`，空数组得到 `[]`。
-- **投影**：最后一段可写成 `a,b`，按给出的顺序取这几个键组成对象，缺少的键为 `null`；如 `--pick data.items.*.id,name -o table` 输出两列。投影只作用于对象，数组要先写 `.*`。投影中的键相对于上一级：写 `data.username,id`，不要写成 `data.username,data.id`。
-- **生效范围**：`--pick`、`-o yaml`、`-o table` 只对 2xx 响应生效，其他响应原样输出。
+- **分项**：`--pick` 是逗号分隔的多项，每项都从根开始，所以 `code,data.username` 一次就能取到两个层级的字段。
+- **分组**：路径最后一段可以写成 `{...}`，组内各项相对该前缀。`data.{username,id},code` 在一个对象里给出三个键；`data.items.*.{id,name}` 给出对象数组（表格的两列）。
+- **别名**：`别名=路径` 用来改键名（`uid=data.id`），别名只能用 `[A-Za-z0-9_-]`。
+- **键名**：取别名，否则取最后一个键名段（`0.name` 得到 `name`）。没有键名段的路径（`*`、`0`）必须写别名；同一对象里键名重复是用法错误。
+- **缺失**：只有一项且不是可展开的分组时，路径缺失退出 7，与普通单路径一致。多项或在分组里缺失得 `null`；`*` 之下元素错误也得 `null`。
+- **语法错误在请求前退出 2**：空项或空段、花括号不配对、分组不在最后一段、以逗号开头或结尾。
+- **`-o table`**：结果不是对象数组时回退为 JSON 并提示。`--pick`、`-o yaml`、`-o table` 只对 2xx 响应生效，其他响应原样输出。
+
+**与 v0.4.0 不兼容**（旧的投影写法已取消）：`data.items.*.id,name` 现在表示两项、都从根取，要写成 `data.items.*.{id,name}`。“字面键优先于投影”的规则不再存在；键名本身含 `.` `,` `=` `{` `}` 时无法用 `--pick` 访问。
 
 ## 生成给 AI agent 用的 skill
 

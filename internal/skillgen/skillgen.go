@@ -112,7 +112,7 @@ func writeUsage(b *strings.Builder, site string) {
 	fmt.Fprintf(b, "## How to call\n\n")
 	fmt.Fprintf(b, "- Operation: `apic %s <op> --param value` (use `apic desc %s <op>` to see parameters).\n", site, site)
 	fmt.Fprintf(b, "- Raw path: `apic %s -X GET /path`.\n", site)
-	b.WriteString("- Filter the response: `--pick a.b` (post-process, see `apic --help`); pick columns with `--pick data.items.*.id,name`.\n")
+	b.WriteString("- Filter the response: `--pick a.b` (post-process, see `apic --help`); pick columns with `--pick data.items.*.{id,name}`.\n")
 	b.WriteString("- Preview without sending: `--dry-run`.\n")
 	b.WriteString("- Output format: `-o json`.\n")
 	b.WriteString("- `-F name=@path` and `-d @file` read and send a local file: use them only with paths the user explicitly gave. `-f` values are always text.\n\n")

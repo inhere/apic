@@ -231,7 +231,7 @@ func TestSkillRenderEnvAuth(t *testing.T) {
 	text := string(data)
 	assert.Contains(t, text, "- dev; auth lg\n")
 	assert.Contains(t, text, "An explicit --auth overrides the environment's auth; pass --env explicitly.")
-	assert.Contains(t, text, "--pick data.items.*.id,name")
+	assert.Contains(t, text, "--pick data.items.*.{id,name}")
 	// the declared auth name is neutralized like every other config text.
 	assert.NotContains(t, text, "<!-- evil")
 	assert.Eq(t, 1, strings.Count(text, "<!--"))

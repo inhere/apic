@@ -254,8 +254,11 @@ func newProviderDryRun(d *Deps, name string, site *model.Site, sel Selection, cl
 	if err != nil {
 		return nil, model.AuthSpec{}, nil, err
 	}
+	// A dry run registers nothing: ResolveAuthDryRun already registered the set
+	// ${env:} values, and the <exec> placeholder of a ${exec:} reference must stay
+	// visible in the printed curl instead of being masked like a secret.
 	provider, err := auth.New(name, sel.Env, sel.Auth, spec, site.Envs[sel.Env], auth.Deps{
-		Client: client, Secrets: d.Secrets, Redactor: d.Redactor, CacheDir: filepath.Join(d.Dir, "cache"), ConfigDir: d.Dir, Verbose: verbose,
+		Client: client, Secrets: &model.Secrets{}, Redactor: d.Redactor, CacheDir: filepath.Join(d.Dir, "cache"), ConfigDir: d.Dir, Verbose: verbose,
 	})
 	if err != nil {
 		return nil, model.AuthSpec{}, nil, err
