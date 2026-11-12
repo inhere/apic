@@ -37,7 +37,7 @@ func generateSkill(name string, opt *skillOptions) error {
 	if err != nil {
 		return err
 	}
-	idx, _, warnings, err := loadSiteIndex(d, name, site)
+	idx, _, warnings, err := loadSiteIndex(d, name, site, "")
 	if err != nil {
 		return err
 	}

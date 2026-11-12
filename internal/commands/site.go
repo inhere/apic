@@ -64,17 +64,19 @@ func siteLookup(d *wiring.Deps, name string) (*model.Site, error) {
 	return site, nil
 }
 
-func loadIndex(d *wiring.Deps, name string, site *model.Site, refresh bool) (*model.Index, []string, error) {
-	envName := site.DefaultEnv
-	if selected := d.State.Selections[name].Env; selected != "" {
-		envName = selected
+// loadIndex fetches (or reuses) the site index with the transport of the
+// environment that envFlag selects; see wiring.FetchEnvName.
+func loadIndex(d *wiring.Deps, name string, site *model.Site, refresh bool, envFlag string) (*model.Index, []string, error) {
+	envName, err := wiring.FetchEnvName(d, name, site, envFlag)
+	if err != nil {
+		return nil, nil, err
 	}
 	if site.Source.URL != "" && site.Envs[envName].Insecure {
 		if err := printWarnings(d, []string{"TLS certificate verification disabled for spec fetch"}); err != nil {
 			return nil, nil, err
 		}
 	}
-	fetch, err := wiring.FetchOptions(d, name, site)
+	fetch, err := wiring.FetchOptions(d, name, site, envFlag)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -95,8 +97,8 @@ func loadIndexCached(d *wiring.Deps, name string, site *model.Site) (*model.Inde
 // loadSiteIndex is the raw index plus the site's overlay. Warnings combine
 // those of loadIndex and of the overlay; structural overlay errors are local
 // errors with redacted text.
-func loadSiteIndex(d *wiring.Deps, name string, site *model.Site) (*model.Index, []model.OverlayChange, []string, error) {
-	raw, warnings, err := loadIndex(d, name, site, false)
+func loadSiteIndex(d *wiring.Deps, name string, site *model.Site, envFlag string) (*model.Index, []model.OverlayChange, []string, error) {
+	raw, warnings, err := loadIndex(d, name, site, false, envFlag)
 	if err != nil {
 		return nil, nil, nil, err
 	}
@@ -196,7 +198,7 @@ func addSite(name string, opt *siteAddOptions) (result error) {
 	tempDeps := *d
 	tempDeps.Dir = tmp
 	site := &model.Site{Source: src}
-	idx, warnings, err := loadIndex(&tempDeps, name, site, true)
+	idx, warnings, err := loadIndex(&tempDeps, name, site, true, "")
 	if err != nil {
 		return err
 	}
@@ -557,7 +559,7 @@ func refreshSite(name string) error {
 	if err != nil {
 		return err
 	}
-	idx, warnings, err := loadIndex(d, name, site, true)
+	idx, warnings, err := loadIndex(d, name, site, true, "")
 	if err != nil {
 		return err
 	}
