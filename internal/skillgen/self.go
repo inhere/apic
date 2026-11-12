@@ -31,6 +31,9 @@ func RenderSelf(name, version string) ([]byte, error) {
 	if err := writeHeader(&b, name, selfDescription); err != nil {
 		return nil, err
 	}
-	b.WriteString(strings.ReplaceAll(selfTemplate, selfVersion, version))
+	// A Windows checkout may turn the embedded template into CRLF; the output is
+	// always LF so the file is the same whichever platform built apic.
+	body := strings.ReplaceAll(selfTemplate, "\r\n", "\n")
+	b.WriteString(strings.ReplaceAll(body, selfVersion, version))
 	return []byte(b.String()), nil
 }

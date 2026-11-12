@@ -1,0 +1,2 @@
+# Embedded templates are compared byte for byte by the tests; keep them LF.
+internal/skillgen/*.md text eol=lf
