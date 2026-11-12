@@ -68,8 +68,8 @@ apic site add pet --def ./defs/pet.yaml --base-url https://api.example.com
 - A definition that needs authentication is fetched with `source.auth`: add
   `source: {auth: <name>}` and the matching entry under `auths` in the site
   YAML, then run `apic site refresh pet`.
-- A URL with credentials or a token in it is not a supported input; put the
-  credential in `.env` and reference it as `${env:NAME}`.
+- Do not put credentials or tokens in a URL; keep them in `.env` and reference
+  them as `${env:NAME}`.
 
 ## Simple definitions
 
@@ -163,11 +163,13 @@ sites:
   (`login.method`, `login.path`, `login.body`, `token`, `expires`, `apply`) or
   `exec` (`command` argv, `env`, `ttl`, `token`, `expires`).
 - `allow_methods` restricts an identity to read-only methods.
-- `${env:NAME}` reads `.env` or the parent environment and may appear in any
-  value. `${exec:command arg...}` runs a command and uses its stdout; it is
-  allowed **only** in credential values (`token`, `password`, `value`, the
-  values of `exec.env` and the strings of `login.body`) and exits 1 anywhere
-  else. It is never run by `--dry-run`.
+- `${env:NAME}` reads `.env` or the parent environment; it is expanded in the
+  fields of an `auths` entry (not in `envs`, so `base_url` is literal).
+  `${exec:command arg...}` runs a command (no shell, no quoting) and uses its
+  stdout; it is allowed **only** in credential values (`token`, `password`,
+  `value`, the values of `exec.env` and the strings of `login.body`) and exits 1
+  anywhere else. `--dry-run` prints `<exec>` instead of running the call's
+  reference; fetching a definition through `source.auth` still runs it.
 - Authentication of a call: `--auth`, then `envs.<env>.auth`, then the auth
   saved by `apic use`, then `default_auth`.
 - `paginate` describes a paginated list:
@@ -182,8 +184,9 @@ sites:
       total: data.total # optional path of the total count
 ```
 
-Run `apic config check` after editing: it reports unknown keys, misplaced
-`${exec:}` references and plaintext credentials. `apic config path` prints the
+Run `apic config check` after editing: it reports plaintext credentials, auth
+names that are not defined, misplaced or unclosed `${exec:}` references, and the
+command each `exec` auth runs. `apic config path` prints the
 directory in use.
 
 ## Calling operations
