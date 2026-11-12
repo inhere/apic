@@ -62,6 +62,7 @@ func (SimpleLoader) Load(ctx context.Context, src model.Source, dir string) (*mo
 	if err != nil {
 		return nil, model.Errorf(model.ExitLocal, "%s: %v", file, err)
 	}
+	data = model.StripBOM(data)
 	var doc struct {
 		Operations map[string]simpleOperation `yaml:"operations"`
 	}

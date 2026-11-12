@@ -92,7 +92,7 @@ func LoadEnv(dir string) (*Env, error) {
 	if err != nil {
 		return nil, model.Errorf(model.ExitLocal, "%s: %v", file, err)
 	}
-	return &Env{Values: ParseDotenv(string(data))}, nil
+	return &Env{Values: ParseDotenv(string(model.StripBOM(data)))}, nil
 }
 
 // Lookup prefers even an empty value explicitly present in the OS environment.

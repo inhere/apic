@@ -142,3 +142,20 @@ func TestSimpleEnum(t *testing.T) {
 		assert.Contains(t, err.Error(), "enum must be a non-empty list of distinct non-empty values")
 	})
 }
+
+func TestSimpleStripsBOM(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("APIC_CONFIG_DIR", dir)
+	content := "\xEF\xBB\xBFoperations:\n  ping:\n    get: /ping\n"
+	assert.Require(t, assert.NoError(t, os.WriteFile(filepath.Join(dir, "demo.yaml"), []byte(content), 0600)))
+	index, err := (spec.SimpleLoader{}).Load(context.Background(), model.Source{File: "demo.yaml"}, dir)
+	assert.Require(t, assert.NoError(t, err))
+	assert.Eq(t, 1, len(index.Ops))
+}
+
+func TestGitLabExampleDefinition(t *testing.T) {
+	dir := filepath.Join("..", "..", "examples", "gitlab")
+	index, err := (spec.SimpleLoader{}).Load(context.Background(), model.Source{File: "defs/gitlab.yaml"}, dir)
+	assert.Require(t, assert.NoError(t, err))
+	assert.Eq(t, 8, len(index.Ops))
+}

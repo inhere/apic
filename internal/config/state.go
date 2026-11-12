@@ -40,7 +40,7 @@ func LoadState(dir string) (*State, error) {
 	if err != nil {
 		return nil, model.Errorf(model.ExitLocal, "%s: %v", file, err)
 	}
-	if err := yaml.Unmarshal(data, st); err != nil {
+	if err := yaml.Unmarshal(model.StripBOM(data), st); err != nil {
 		return nil, model.Errorf(model.ExitLocal, "%s: %v", file, err)
 	}
 	if st.Selections == nil {

@@ -44,6 +44,7 @@ func LoadOverlay(dir, site string) (*model.Overlay, error) {
 // only used for messages and model.Overlay.File.
 func ParseOverlay(file string, data []byte) (*model.Overlay, error) {
 	ov := &model.Overlay{File: file}
+	data = model.StripBOM(data)
 	// Strict decoding rejects unknown and duplicate keys before value validation.
 	if err := yaml.UnmarshalWithOptions(data, ov, yaml.Strict()); err != nil {
 		return nil, overlayDecodeError(file, err)

@@ -35,7 +35,7 @@ func Fetch(ctx context.Context, src model.Source, dir string, opt FetchOptions) 
 		if err != nil {
 			return nil, "", false, model.Errorf(model.ExitLocal, "read definition %s: %v", file, err)
 		}
-		return data, "", false, nil
+		return model.StripBOM(data), "", false, nil
 	}
 	u, err := url.Parse(src.URL)
 	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {

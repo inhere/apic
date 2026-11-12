@@ -23,6 +23,7 @@ func Load(dir string) (*model.Config, error) {
 	cfg := &model.Config{Version: 1, Sites: make(map[string]*model.Site)}
 	mainFile := filepath.Join(dir, "config.yaml")
 	data, err := os.ReadFile(mainFile)
+	data = model.StripBOM(data)
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
 		return nil, model.Errorf(model.ExitLocal, "%s site <config>: %v", mainFile, err)
 	}
@@ -64,6 +65,7 @@ func Load(dir string) (*model.Config, error) {
 		if err != nil {
 			return nil, model.Errorf(model.ExitLocal, "%s site %q: %v", file, name, err)
 		}
+		data = model.StripBOM(data)
 		var site model.Site
 		if err := decodeSite(data, &site); err != nil {
 			return nil, model.Errorf(model.ExitLocal, "%s site %q: %v", file, name, err)
