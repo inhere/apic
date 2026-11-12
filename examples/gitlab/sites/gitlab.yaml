@@ -1,0 +1,16 @@
+# Copy to <config dir>/sites/gitlab.yaml (see `apic config path`).
+# Self-hosted GitLab: change base_url, keep the /api/v4 suffix.
+source: {type: simple, file: defs/gitlab.yaml}
+envs:
+  main: {base_url: https://gitlab.com/api/v4}
+default_env: main
+auths:
+  anon: {type: none}
+  # Personal access token with read_api scope, from the environment or <config dir>/.env.
+  pat:
+    type: apikey
+    in: header
+    name: PRIVATE-TOKEN
+    value: ${env:GITLAB_TOKEN}
+    allow_methods: [GET, HEAD]   # this token never sends writes
+default_auth: pat

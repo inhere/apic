@@ -1,0 +1,38 @@
+# A few read-only GitLab REST API v4 endpoints as a simple definition.
+# The site's base_url ends with /api/v4, so paths start after it.
+operations:
+  version:
+    get: /version
+    summary: GitLab version
+  me:
+    get: /user
+    summary: current user
+  projects:
+    get: /projects
+    summary: list projects
+    query: [search, membership, owned, simple, per_page, page]
+    params:
+      - {name: order_by, in: query, enum: [id, name, path, created_at, updated_at, last_activity_at]}
+  project:
+    get: /projects/{id}
+    summary: project details ({id} is a number or URL-encoded group%2Fname)
+  branches:
+    get: /projects/{id}/repository/branches
+    summary: list branches
+    query: [search, per_page]
+  commits:
+    get: /projects/{id}/repository/commits
+    summary: list commits
+    query: [ref_name, since, until, path, per_page]
+  mrs:
+    get: /projects/{id}/merge_requests
+    summary: list merge requests
+    query: [target_branch, per_page]
+    params:
+      - {name: state, in: query, enum: [opened, closed, merged, locked, all]}
+  pipelines:
+    get: /projects/{id}/pipelines
+    summary: list pipelines
+    query: [ref, per_page]
+    params:
+      - {name: status, in: query, enum: [created, pending, running, success, failed, canceled, skipped, manual]}

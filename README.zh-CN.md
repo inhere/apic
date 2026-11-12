@@ -166,6 +166,8 @@ apic site add jenkins --def ~/.config/apic/defs/jenkins.yaml --base-url https://
 apic jenkins job-build --name demo --BRANCH main
 ```
 
+可直接复制使用的只读 GitLab 站点（定义文件、带 `PRIVATE-TOKEN` 认证的站点文件、示例命令）见 [examples/gitlab](examples/gitlab/)。
+
 ### 由外部命令提供 token（`exec`）
 
 ```yaml

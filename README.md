@@ -190,6 +190,9 @@ apic site add jenkins --def ~/.config/apic/defs/jenkins.yaml --base-url https://
 apic jenkins job-build --name demo --BRANCH main
 ```
 
+A ready-to-copy read-only GitLab site (definition, site file with a
+`PRIVATE-TOKEN` auth, sample commands) is in [examples/gitlab](examples/gitlab/).
+
 ### Token from an external command (`exec`)
 
 ```yaml
