@@ -393,8 +393,9 @@ func evalLevel(v any, items []pickItem, strict bool) ([]pickKV, error) {
 	return out, nil
 }
 
-// evalItemValue returns the value of one item that yields a single object or an
-// array of objects: an aliased group, or a group below "*".
+// evalItemValue returns the value of one item that is either a plain path or an
+// item holding a single value of its own: an aliased group, or a group below
+// "*" that yields one object per element.
 func evalItemValue(v any, it pickItem) (any, error) {
 	base, err := applyPick(v, it.segs, nil)
 	if err != nil {
