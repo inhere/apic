@@ -88,89 +88,192 @@ func TestPick(t *testing.T) {
 	})
 }
 
-func TestPickProjection(t *testing.T) {
-	pick := func(t *testing.T, body, path string) (string, error) {
-		t.Helper()
-		return pickJSON(t, body, path)
+func TestPickItems(t *testing.T) {
+	body := `{"code":0,"data":{"username":"u","id":7}}`
+	for _, tc := range []struct{ name, path, want string }{
+		{"one path keeps the plain value", "data.username", `"u"`},
+		{"two items from the root", "code,data.username", `{"code":0,"username":"u"}`},
+		{"expandable group is flat", "data.{username,id},code", `{"username":"u","id":7,"code":0}`},
+		{"alias and path", "uid=data.id,code", `{"uid":7,"code":0}`},
+		{"single aliased item is an object", "uid=data.id", `{"uid":7}`}, // R1
+		{"missing item is null", "code,data.missing", `{"code":0,"missing":null}`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := pickJSON(t, body, tc.path)
+			assert.NoError(t, err)
+			assert.Eq(t, tc.want, got)
+		})
 	}
-	codeOf := func(err error) int { return err.(*CodedError).Code() }
-
-	t.Run("root object keeps given order and null for missing", func(t *testing.T) {
-		got, err := pick(t, `{"a":1,"b":2,"c":3}`, "c,x,a")
+	t.Run("index path takes the key name", func(t *testing.T) {
+		got, err := pickJSON(t, `[{"name":"x","c":1}]`, "0.name,0.c")
 		assert.NoError(t, err)
-		assert.Eq(t, `{"c":3,"x":null,"a":1}`, got)
+		assert.Eq(t, `{"name":"x","c":1}`, got)
 	})
-	t.Run("under star", func(t *testing.T) {
-		got, err := pick(t, `{"data":{"list":[{"id":1,"name":"a","z":0},{"name":"b"}]}}`, "data.list.*.id,name")
+	t.Run("key order follows the written order", func(t *testing.T) {
+		got, err := pickJSON(t, `{"a":1,"b":2,"c":3}`, "c,a,b")
 		assert.NoError(t, err)
-		assert.Eq(t, `[{"id":1,"name":"a"},{"id":null,"name":"b"}]`, got)
+		assert.Eq(t, `{"c":3,"a":1,"b":2}`, got)
 	})
-	t.Run("literal key with comma wins", func(t *testing.T) {
-		got, err := pick(t, `{"a,b":"lit","a":1,"b":2}`, "a,b")
-		assert.NoError(t, err)
-		assert.Eq(t, `"lit"`, got)
-	})
-	t.Run("middle segment comma is a plain key", func(t *testing.T) {
-		got, err := pick(t, `{"a,b":{"c":5}}`, "a,b.c")
-		assert.NoError(t, err)
-		assert.Eq(t, `5`, got)
-		_, err = pick(t, `{"a":{"c":5}}`, "a,b.c")
-		assert.Err(t, err)
-		assert.Eq(t, ExitPostProcess, codeOf(err))
-	})
-	t.Run("empty or duplicate key", func(t *testing.T) {
-		for _, path := range []string{"a,,b", "a,", ",a", "a,b,a"} {
-			_, err := pick(t, `{"a":1,"b":2}`, path)
+	t.Run("index or star alone needs an alias", func(t *testing.T) {
+		body := `{"*":1,"0":2,"a":3}`
+		for _, path := range []string{"*,a", "0,a"} {
+			_, err := ParsePick(path)
 			assert.Err(t, err, path)
-			assert.Eq(t, ExitPostProcess, codeOf(err), path)
-			assert.Contains(t, err.Error(), "empty or duplicate key")
+			assert.Eq(t, ExitUsage, err.(*CodedError).Code(), path)
 		}
-	})
-	t.Run("non-object without star", func(t *testing.T) {
-		for _, body := range []string{`[{"a":1}]`, `{"x":5}`} {
-			path := "a,b"
-			if body == `{"x":5}` {
-				path = "x.a,b"
-			}
-			_, err := pick(t, body, path)
-			assert.Err(t, err, body)
-			assert.Eq(t, ExitPostProcess, codeOf(err))
-			assert.Contains(t, err.Error(), "needs an object")
-		}
-	})
-	t.Run("non-object under star is null", func(t *testing.T) {
-		got, err := pick(t, `[{"a":1,"b":2},5,"s"]`, "*.a,b")
+		got, err := pickJSON(t, body, "star=*,zero=0,a")
 		assert.NoError(t, err)
-		assert.Eq(t, `[{"a":1,"b":2},null,null]`, got)
+		assert.Eq(t, `{"star":[1,2,3],"zero":2,"a":3}`, got)
 	})
-	t.Run("star and digits are literal keys", func(t *testing.T) {
-		got, err := pick(t, `{"*":1,"0":2,"a":3}`, "*,0,a")
+	t.Run("single aliased star item", func(t *testing.T) {
+		got, err := pickJSON(t, `{"d":[{"id":1},{"id":2}]}`, "ids=d.*.id")
 		assert.NoError(t, err)
-		assert.Eq(t, `{"*":1,"0":2,"a":3}`, got)
-	})
-	t.Run("star over object values then project", func(t *testing.T) {
-		got, err := pick(t, `{"u1":{"n":1,"m":2},"u2":{"n":3}}`, "*.n,m")
-		assert.NoError(t, err)
-		assert.Eq(t, `[{"n":1,"m":2},{"n":3,"m":null}]`, got)
-	})
-	t.Run("parse accepts commas", func(t *testing.T) {
-		p, err := ParsePick("a.b,c")
-		assert.NoError(t, err)
-		assert.Eq(t, "a.b,c", p.String())
+		assert.Eq(t, `{"ids":[1,2]}`, got)
 	})
 }
 
-func TestPickCommaOutsideLastSegmentHint(t *testing.T) {
-	body := `{"data":{"id":7,"username":"u","x":{"y":1}}}`
-	_, err := pickJSON(t, body, "data.username,data.id")
-	assert.Require(t, assert.Error(t, err))
-	assert.Contains(t, err.Error(), `--pick segment "username,data" not found`)
-	assert.Contains(t, err.Error(), "try data.username,id")
-	_, err = pickJSON(t, body, "data.username,x.y")
-	assert.Require(t, assert.Error(t, err))
-	assert.Contains(t, err.Error(), "in the last segment only, e.g. data.items.*.id,name")
-	// a literal key containing a comma still wins
-	got, err := pickJSON(t, `{"a,b":{"c":1}}`, "a,b.c")
+func TestPickGroups(t *testing.T) {
+	list := `{"data":{"list":[{"id":1,"name":"a","z":9},{"id":2,"name":"b"}],"total":42}}`
+
+	t.Run("group below star gives object array", func(t *testing.T) {
+		got, err := pickJSON(t, list, "data.list.*.{id,name}")
+		assert.NoError(t, err)
+		assert.Eq(t, `[{"id":1,"name":"a"},{"id":2,"name":"b"}]`, got)
+	})
+	t.Run("list and total", func(t *testing.T) {
+		got, err := pickJSON(t, list, "data.list.*.{id,name},data.total")
+		assert.NoError(t, err)
+		assert.Eq(t, `{"list":[{"id":1,"name":"a"},{"id":2,"name":"b"}],"total":42}`, got)
+	})
+	t.Run("nested group is flat", func(t *testing.T) {
+		got, err := pickJSON(t, `{"data":{"a":1,"sub":{"x":2,"y":3}}}`, "data.{a,sub.{x,y}}")
+		assert.NoError(t, err)
+		assert.Eq(t, `{"a":1,"x":2,"y":3}`, got)
+	})
+	t.Run("aliased group is nested", func(t *testing.T) { // R2
+		got, err := pickJSON(t, `{"data":{"a":1,"b":2}}`, "u=data.{a,b}")
+		assert.NoError(t, err)
+		assert.Eq(t, `{"u":{"a":1,"b":2}}`, got)
+	})
+	t.Run("aliased group inside a group", func(t *testing.T) {
+		got, err := pickJSON(t, `{"data":{"a":1,"sub":{"x":2,"y":3}}}`, "data.{a,u=sub.{x,y}}")
+		assert.NoError(t, err)
+		assert.Eq(t, `{"a":1,"u":{"x":2,"y":3}}`, got)
+	})
+	t.Run("missing group prefix of a single item exits 7", func(t *testing.T) { // R3
+		_, err := pickJSON(t, `{"x":1}`, "data.{a,b}")
+		assert.Err(t, err)
+		assert.Eq(t, ExitPostProcess, err.(*CodedError).Code())
+		assert.Contains(t, err.Error(), `"data"`)
+	})
+	t.Run("missing group prefix among items is null", func(t *testing.T) { // R3
+		got, err := pickJSON(t, `{"x":1}`, "data.{a,b},x")
+		assert.NoError(t, err)
+		assert.Eq(t, `{"a":null,"b":null,"x":1}`, got)
+	})
+	t.Run("group prefix that is not an object", func(t *testing.T) { // R3
+		_, err := pickJSON(t, `{"data":5}`, "data.{a,b}")
+		assert.Err(t, err)
+		assert.Eq(t, ExitPostProcess, err.(*CodedError).Code())
+		assert.Contains(t, err.Error(), "needs an object")
+		got, err := pickJSON(t, `{"data":5,"x":1}`, "data.{a,b},x")
+		assert.NoError(t, err)
+		assert.Eq(t, `{"a":null,"b":null,"x":1}`, got)
+	})
+	t.Run("non-object element below star is null", func(t *testing.T) { // R4
+		got, err := pickJSON(t, `[{"id":1,"name":"a"},5,"s"]`, "*.{id,name}")
+		assert.NoError(t, err)
+		assert.Eq(t, `[{"id":1,"name":"a"},null,null]`, got)
+	})
+	t.Run("missing key of an element below star is null", func(t *testing.T) { // R4
+		got, err := pickJSON(t, `[{"id":1},{"name":"b"}]`, "*.{id,name}")
+		assert.NoError(t, err)
+		assert.Eq(t, `[{"id":1,"name":null},{"id":null,"name":"b"}]`, got)
+	})
+	t.Run("group below star inside an item", func(t *testing.T) {
+		got, err := pickJSON(t, list, "data.list.*.{id},data.total")
+		assert.NoError(t, err)
+		assert.Eq(t, `{"list":[{"id":1},{"id":2}],"total":42}`, got)
+	})
+	t.Run("missing plain item among items is null", func(t *testing.T) {
+		got, err := pickJSON(t, `{"a":1}`, "a,missing.deeper")
+		assert.NoError(t, err)
+		assert.Eq(t, `{"a":1,"deeper":null}`, got)
+	})
+}
+
+func TestPickSyntaxErrors(t *testing.T) {
+	for _, tc := range []struct{ path, want string }{
+		{".", "empty segment"},
+		{"a..b", "empty segment"},
+		{".a", "empty segment"},
+		{"a.", "empty segment"},
+		{"a,,b", "empty item"},
+		{"a,", "empty item"},
+		{",a", "empty item"},
+		{"{}", "empty item"},
+		{"a.{}", "empty item"},
+		{"=a", "empty alias"},
+		{"a b=id", "invalid alias"},
+		{"a.{b", "unbalanced braces"},
+		{"a.b}", "unbalanced braces"},
+		{"a{b}", "malformed group"},
+		{"a.{b}{c}", "malformed group"},
+		{"data.{a,b}.x", "a group must be the last segment"},
+		{"a,a", `duplicate key "a"`},
+		{"uid=data.id,uid=code", `duplicate key "uid"`},
+		{"data.{a,a}", `duplicate key "a"`},
+		{"data.list.*.{id,id}", `duplicate key "id"`},
+		{"a.{b,c.{b}}", `duplicate key "b"`},
+	} {
+		t.Run(tc.path, func(t *testing.T) {
+			_, err := ParsePick(tc.path)
+			assert.Require(t, assert.Error(t, err))
+			assert.Eq(t, ExitUsage, err.(*CodedError).Code())
+			assert.Contains(t, err.Error(), `--pick "`+tc.path+`": `)
+			assert.Contains(t, err.Error(), tc.want)
+		})
+	}
+}
+
+func TestPickLiteralKeys(t *testing.T) {
+	// A comma always splits items: no literal key fallback anymore.
+	got, err := pickJSON(t, `{"a,b":"lit","a":1,"b":2}`, "a,b")
 	assert.NoError(t, err)
-	assert.Eq(t, "1", got)
+	assert.Eq(t, `{"a":1,"b":2}`, got)
+	got, err = pickJSON(t, `{"a,b":{"c":1},"a":1}`, "a,b.c")
+	assert.NoError(t, err)
+	assert.Eq(t, `{"a":1,"c":null}`, got)
+	// A dot inside a single segment is unreachable, so "a.b" is two levels.
+	_, err = pickJSON(t, `{"a.b":1}`, "a.b")
+	assert.Err(t, err)
+	assert.Eq(t, ExitPostProcess, err.(*CodedError).Code())
+}
+
+func TestPickIsPlainPath(t *testing.T) {
+	for _, tc := range []struct {
+		path  string
+		plain bool
+	}{
+		{"a.b", true},
+		{"a.0.b", true},
+		{"a", true},
+		{"a.*", false},
+		{"a,b", false},
+		{"uid=a", false},
+		{"a.{b}", false},
+		{"*.{a}", false},
+	} {
+		p, err := ParsePick(tc.path)
+		assert.Require(t, assert.NoError(t, err))
+		assert.Eq(t, tc.plain, p.IsPlainPath(), tc.path)
+	}
+}
+
+func TestPickStringKeepsInput(t *testing.T) {
+	for _, path := range []string{"a.b,c", "data.{a,b},code", "uid=data.id", "a.0.*"} {
+		p, err := ParsePick(path)
+		assert.Require(t, assert.NoError(t, err))
+		assert.Eq(t, path, p.String())
+	}
 }

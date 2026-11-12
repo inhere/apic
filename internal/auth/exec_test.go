@@ -384,6 +384,17 @@ func TestExecTokenPathProjection(t *testing.T) {
 	assert.NotContains(t, err.Error(), "jt-12345")
 }
 
+func TestExecTokenPathGroup(t *testing.T) {
+	f := newExecFixture(t)
+	// A group yields an object too, so it is rejected like a projection.
+	p := f.provider(t, f.jsonSpec(`{"a":"jt-12345","b":"other"}`, "{a,b}", "", ""))
+	_, err := apply(t, p)
+	assert.Err(t, err)
+	assert.Eq(t, model.ExitLocal, code(err))
+	assert.Contains(t, err.Error(), "not a single-line string")
+	assert.NotContains(t, err.Error(), "jt-12345")
+}
+
 func TestExecEnvironment(t *testing.T) {
 	f := newExecFixture(t)
 	t.Setenv("STUB_PARENT", "from-parent")
