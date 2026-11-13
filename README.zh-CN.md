@@ -499,6 +499,7 @@ apic link rm petctl
 make test     # go vet + 单元测试
 make lint     # gofmt（装了 staticcheck 时一并检查）
 make build    # 生成 dist/apic
+make publish  # build-all 后用 apic 把 dist/ 上传到 dufs 文件服务（见 examples/dufs）
 ```
 
 设计与计划：[设计文档](docs/design/apic-design.md)、[一期计划](docs/plans/2026-11-10-apic-phase1-plan.md)。

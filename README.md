@@ -621,6 +621,7 @@ request line and headers (secrets masked).
 make test     # go vet + unit tests
 make lint     # gofmt (+ staticcheck when installed)
 make build    # dist/apic
+make publish  # build-all, then upload dist/ to a dufs server with apic (examples/dufs)
 ```
 
 Design and plans: [design](docs/design/apic-design.md),

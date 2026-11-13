@@ -22,7 +22,7 @@ UPX := $(shell command -v upx 2>/dev/null)
 # Written into latest.yaml via echo; keep it free of shell/YAML metacharacters.
 DESCRIPTION := call any HTTP API with commands generated from OpenAPI or simple definitions
 
-.PHONY: all build install test lint clean clean-dist help dump-info latest-yaml build-all \
+.PHONY: all build install test lint clean clean-dist help dump-info latest-yaml build-all publish publish-dist \
 	build-linux build-linux-arm64 build-darwin build-darwin-arm64 build-windows
 
 ## all: build (default)
@@ -103,6 +103,30 @@ build-darwin-arm64:
 ## build-windows: compile for Windows amd64
 build-windows:
 	$(call cross_build,windows,amd64,$(APP)-windows-amd64.exe,upx)
+
+# publish uploads dist/ with apic to a dufs site (see examples/dufs). Override:
+#   MIRROR_SITE  apic site name                (default mirror)
+#   MIRROR_DIR   target directory on the server (default tools/$(APP))
+#   MIRROR_ARGS  extra apic options, e.g. "--env site2 --yes" for a protected environment
+APIC        ?= apic
+MIRROR_SITE ?= mirror
+MIRROR_DIR  ?= tools/$(APP)
+MIRROR_ARGS ?=
+
+## publish: build-all, then upload dist/ to a dufs mirror through apic and verify sha256
+publish: build-all publish-dist
+
+## publish-dist: upload the existing dist/ (binaries first, latest.yaml last) and verify sha256
+publish-dist:
+	@test -f $(DIST_DIR)/latest.yaml || { echo "missing $(DIST_DIR)/latest.yaml; run make build-all" >&2; exit 1; }
+	@for f in $$(ls $(DIST_DIR) | grep -vx latest.yaml) latest.yaml; do \
+		echo "PUT $$f -> $(MIRROR_SITE):$(MIRROR_DIR)/$$f"; \
+		$(APIC) $(MIRROR_SITE) put --path "$(MIRROR_DIR)/$$f" -d "@$(DIST_DIR)/$$f" --timeout 300 $(MIRROR_ARGS) >/dev/null || exit 1; \
+		remote=$$($(APIC) $(MIRROR_SITE) hash --path "$(MIRROR_DIR)/$$f" $(MIRROR_ARGS)) || exit 1; \
+		local=$$(sha256sum "$(DIST_DIR)/$$f" | cut -d' ' -f1); \
+		[ "$$remote" = "$$local" ] || { echo "sha256 mismatch: $$f" >&2; exit 1; }; \
+	done
+	@echo "published $$(sed -n 's/^version: //p' $(DIST_DIR)/latest.yaml) to $(MIRROR_SITE):$(MIRROR_DIR)"
 
 ## clean: remove build artifacts
 clean:

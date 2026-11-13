@@ -1,0 +1,30 @@
+# A dufs file server (https://github.com/sigoden/dufs) as a simple definition.
+# --path is relative to the server root and has no leading slash, e.g. tools/apic.
+operations:
+  health:
+    get: /__dufs__/health
+    summary: health check
+  root:
+    get: /?json
+    summary: list the root directory
+  ls:
+    get: /{path}/?json
+    summary: list a directory
+  find:
+    get: /{path}/?json
+    summary: "search under a directory by name: -p q=<keyword>"
+    query: [q]
+  hash:
+    get: /{path}?hash
+    summary: sha256 of a file
+  get:
+    get: /{path}
+    summary: download a file to stdout
+    output: raw
+  put:
+    put: /{path}
+    summary: "upload a file: -d @<local file>; overwrites, creates directories"
+    body: {type: raw}
+  rm:
+    delete: /{path}
+    summary: delete a file or directory

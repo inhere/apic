@@ -1,0 +1,9 @@
+# Copy to <config dir>/sites/mirror.yaml (see `apic config path`) and change base_url.
+source: {type: simple, file: defs/dufs.yaml}
+envs:
+  main: {base_url: http://mirror.example.com, auth: rw}
+default_env: main
+auths:
+  anon: {type: none}
+  # dufs basic auth account with write access; password from the environment or <config dir>/.env.
+  rw: {type: basic, username: dev, password: "${env:MIRROR_PASS}"}
