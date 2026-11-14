@@ -84,7 +84,7 @@ optional fields below.
 | `output` | Output format of this operation: `auto` (default), `json`, `raw`, `yaml` or `table`; `-o` overrides it. |
 | `query` | Shorthand list of optional string query parameters. |
 | `params` | Explicit parameters, see the table below. |
-| `body` | Request body; `body.type` is `json` (default), `form`, `multipart`, `xml` or `raw`. |
+| `body` | Request body; `body.type` is `json` (default), `form`, `multipart`, `xml` or `raw`. `body.fields` maps top-level field names to `string`, `integer`, `number`, `boolean`, `array` or `object`; `-f key=value` is converted to a declared `boolean`, `integer` or `number`. |
 
 `params` entries:
 
@@ -117,7 +117,7 @@ operations:
   pet-create:
     post: /pets
     summary: create a pet
-    body: {type: json}
+    body: {type: json, fields: {age: integer, vaccinated: boolean}}
     params:
       - {name: X-Request-Id, in: header, required: false, type: string}
   pet-search:
@@ -134,7 +134,7 @@ operations:
 apic site add pet --def ./defs/pet.yaml --base-url https://api.example.com
 apic pet pet-list --status available
 apic pet pet-get --id 7 --expand owner
-apic pet pet-create -f name=tom -f age:=3
+apic pet pet-create -f name=tom -f age=3 -f vaccinated=true
 apic pet pet-search --state available
 ```
 
@@ -209,8 +209,9 @@ apic link pet --name petctl       # generate a petctl shortcut command
   `--verbose`/`-v`, `--dry-run`, `--yes`, `--timeout`, `--header`/`-H`,
   `--all-pages` and `--max-pages`. `--timeout` takes a Go duration (`10s`) or a
   number of seconds.
-- `-p name=value` sets any parameter, `-f key=value` a body field (string),
-  `-f key:=<json>` a typed JSON value, `-d @file` the whole body (`-` is stdin)
+- `-p name=value` sets any parameter, `-f key=value` a body field (a string,
+  or the `boolean`/`integer`/`number` the definition declares for that top-level
+  field), `-f key:=<json>` a typed JSON value as written, `-d @file` the whole body (`-` is stdin)
   and `-F name=@path` a multipart file field.
 - `-F name=@path` and `-d @file` read a local file: use them only with paths the
   user explicitly gave. `-f` values are always text.

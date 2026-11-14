@@ -3,6 +3,7 @@ package request
 import (
 	"encoding/json"
 	"net/url"
+	"strconv"
 	"strings"
 
 	"github.com/inhere/apic/internal/model"
@@ -133,6 +134,8 @@ func buildBody(op *model.Operation, in Input) ([]byte, string, []Part, error) {
 			if err := json.Unmarshal([]byte(v), &val); err != nil {
 				return nil, "", nil, model.Errorf(model.ExitLocal, "invalid JSON for field %q: %v", k, err)
 			}
+		} else if val, err = typedField(spec, k, v); err != nil {
+			return nil, "", nil, err
 		}
 		if err := setNested(root, k, val); err != nil {
 			return nil, "", nil, err
@@ -143,6 +146,49 @@ func buildBody(op *model.Operation, in Input) ([]byte, string, []Part, error) {
 		return nil, "", nil, model.Errorf(model.ExitLocal, "encode body: %v", err)
 	}
 	return b, ctype, nil, nil
+}
+
+// typedField converts a k=v value to the scalar type the body schema declares
+// for the top-level field k (integer, number or boolean). Other fields, dotted
+// keys and string, array or object types keep the string as written; k:=json
+// is the way to send those typed.
+func typedField(spec *model.BodySpec, k, v string) (any, error) {
+	if spec == nil {
+		return v, nil
+	}
+	typ := ""
+	for _, f := range spec.Schema.Fields {
+		if f.Name == k {
+			typ = f.Type
+			break
+		}
+	}
+	bad := func() error {
+		return model.Errorf(model.ExitLocal, "field %q: %q is not a valid %s (use %s:=<json> to send it as written)", k, v, typ, k)
+	}
+	switch typ {
+	case "boolean":
+		switch v {
+		case "true":
+			return true, nil
+		case "false":
+			return false, nil
+		}
+		return nil, bad()
+	case "integer":
+		// json.Valid rejects forms ParseInt accepts but JSON does not (+5, 007).
+		if _, err := strconv.ParseInt(v, 10, 64); err != nil || !json.Valid([]byte(v)) {
+			return nil, bad()
+		}
+		return json.Number(v), nil
+	case "number":
+		// ParseFloat rejects quoted strings; json.Valid rejects Inf, NaN, 0x10.
+		if _, err := strconv.ParseFloat(v, 64); err != nil || !json.Valid([]byte(v)) {
+			return nil, bad()
+		}
+		return json.Number(v), nil
+	}
+	return v, nil
 }
 
 // splitField parses "k=v" or "k:=json".

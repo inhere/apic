@@ -143,6 +143,33 @@ func TestBuildBody(t *testing.T) {
 	assert.Eq(t, `{"k":1}`, string(pr.Body))
 }
 
+func TestBuildBodyTypedFields(t *testing.T) {
+	env := model.Env{BaseURL: "http://h"}
+	op := &model.Operation{Method: "POST", Path: "/t", Body: &model.BodySpec{Type: "json", Schema: model.SchemaSummary{Fields: []model.Field{
+		{Name: "mock", Type: "boolean"}, {Name: "n", Type: "integer"}, {Name: "rate", Type: "number"}, {Name: "id", Type: "string"}, {Name: "tags", Type: "array"},
+	}}}}
+	pr, err := Build(op, Input{Method: "POST", Fields: []string{"mock=true", "n=3", "rate=1.5", "id=7", "tags=a", "other=false", "x.mock=true"}}, env, "")
+	assert.NoErr(t, err)
+	assert.Eq(t, `{"id":"7","mock":true,"n":3,"other":"false","rate":1.5,"tags":"a","x":{"mock":"true"}}`, string(pr.Body))
+
+	// k:=json is kept as written, even against the declared type.
+	pr, err = Build(op, Input{Method: "POST", Fields: []string{"mock:=\"yes\"", "n:=null"}}, env, "")
+	assert.NoErr(t, err)
+	assert.Eq(t, `{"mock":"yes","n":null}`, string(pr.Body))
+
+	for _, f := range []string{"mock=yes", "mock=1", "n=1.5", "n=+5", "n=007", "rate=Inf", "rate=0x10", `rate="1"`} {
+		_, err = Build(op, Input{Method: "POST", Fields: []string{f}}, env, "")
+		assert.Eq(t, model.ExitLocal, code(err), f)
+		assert.Contains(t, err.Error(), ":=<json>", f)
+	}
+
+	// form bodies stay text.
+	form := &model.Operation{Path: "/f", Body: &model.BodySpec{Type: "form", Schema: op.Body.Schema}}
+	pr, err = Build(form, Input{Fields: []string{"mock=yes"}}, env, "")
+	assert.NoErr(t, err)
+	assert.Eq(t, "mock=yes", string(pr.Body))
+}
+
 func call(t *testing.T, srv *httptest.Server, pr *Prepared, a Authorizer, r *model.Redactor) Call {
 	t.Helper()
 	return Call{Prepared: pr, Env: model.Env{BaseURL: srv.URL}, Authorizer: a, Redactor: r, Timeout: 5 * time.Second}

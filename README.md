@@ -90,7 +90,10 @@ apic pet list-users --dry-run                   # print the curl command only
 ```
 
 `-f key=value` sends a string, `-f key:=<json>` sends a typed JSON value and
-`-f a.b=v` builds nested objects. A parameter whose name clashes with a global
+`-f a.b=v` builds nested objects. When the definition declares a top-level
+body field as `boolean`, `integer` or `number` (the OpenAPI schema, or
+`body.fields` in a simple definition), `-f key=value` is converted to that type
+(`-f mock=true` sends `true`) and an invalid value exits 1. A parameter whose name clashes with a global
 option is passed with `-p name=value` (or `-p query.name=value`); `all-pages`
 and `max-pages` are reserved option names too.
 
@@ -114,6 +117,7 @@ operations:
     get: /api/users/{id}             # --id is required
   create-user:
     post: /api/users
+    body: {fields: {age: integer, admin: boolean}}  # optional: types for -f key=value
 ```
 
 ```bash
@@ -121,7 +125,7 @@ apic site add pet --def ~/.config/apic/defs/pet.yaml --base-url http://127.0.0.1
 apic ops pet
 apic pet users --keyword tom
 apic pet user --id 7
-apic pet create-user -f name=tom -f age:=3      # {"name":"tom","age":3}
+apic pet create-user -f name=tom -f age=3 -f admin=false   # {"admin":false,"age":3,"name":"tom"}
 ```
 
 ### Read a list as a table

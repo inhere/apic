@@ -75,7 +75,7 @@ apic pet list-users --dry-run                   # 只打印 curl 命令
 ```
 
 `-f` 的几种写法：
-- `-f key=value` 传字符串；
+- `-f key=value` 传字符串；定义里声明了顶层字段是 `boolean`、`integer`、`number` 时（OpenAPI schema，或简单定义的 `body.fields`），按声明的类型转换（`-f mock=true` 发出 `true`），值不合法时退出码 1；
 - `-f key:=<json>` 按 JSON 类型传值；
 - `-f a.b=v` 拼出嵌套对象。
 
@@ -101,6 +101,7 @@ operations:
     get: /api/users/{id}             # 生成必填的 --id
   create-user:
     post: /api/users
+    body: {fields: {age: integer, admin: boolean}}  # 可选：-f key=value 按这些类型转换
 ```
 
 ```bash
@@ -108,7 +109,7 @@ apic site add pet --def ~/.config/apic/defs/pet.yaml --base-url http://127.0.0.1
 apic ops pet
 apic pet users --keyword tom
 apic pet user --id 7
-apic pet create-user -f name=tom -f age:=3      # {"name":"tom","age":3}
+apic pet create-user -f name=tom -f age=3 -f admin=false   # {"admin":false,"age":3,"name":"tom"}
 ```
 
 ### 把列表输出成表格

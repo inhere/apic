@@ -77,6 +77,23 @@ func TestSimpleVariants(t *testing.T) {
 	}
 }
 
+func TestSimpleBodyFields(t *testing.T) {
+	load := func(t *testing.T, text string) (*model.Index, error) {
+		dir := t.TempDir()
+		file := filepath.Join(dir, "demo.yaml")
+		assert.Require(t, assert.NoError(t, os.WriteFile(file, []byte(text), 0600)))
+		return (spec.SimpleLoader{}).Load(context.Background(), model.Source{File: file}, dir)
+	}
+	index, err := load(t, "operations:\n  demo:\n    post: /demo\n    body: {fields: {mock: boolean, n: integer, name: string}}\n")
+	assert.Require(t, assert.NoError(t, err))
+	want := model.SchemaSummary{Type: "object", Fields: []model.Field{{Name: "mock", Type: "boolean"}, {Name: "n", Type: "integer"}, {Name: "name", Type: "string"}}}
+	assert.Eq(t, want, index.Ops[0].Body.Schema)
+
+	_, err = load(t, "operations:\n  demo:\n    post: /demo\n    body: {fields: {mock: bool}}\n")
+	assert.Require(t, assert.Error(t, err))
+	assert.Contains(t, err.Error(), "body.fields.mock")
+}
+
 func TestSimpleEnum(t *testing.T) {
 	load := func(t *testing.T, paramYAML string) ([]model.Param, error) {
 		t.Helper()

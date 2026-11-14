@@ -41,8 +41,11 @@ type simpleParam struct {
 }
 
 type simpleBody struct {
-	Type string `yaml:"type"`
+	Type   string            `yaml:"type"`
+	Fields map[string]string `yaml:"fields"` // top-level field name -> string, integer, number, boolean, array or object
 }
+
+var simpleFieldTypes = map[string]bool{"string": true, "integer": true, "number": true, "boolean": true, "array": true, "object": true}
 
 // SimpleLoader loads user-named operations from a simple YAML definition.
 type SimpleLoader struct{}
@@ -133,6 +136,21 @@ func (SimpleLoader) Load(ctx context.Context, src model.Source, dir string) (*mo
 				return nil, model.Errorf(model.ExitLocal, "%s operation %s: body.type must be one of json, form, multipart, xml, raw", file, name)
 			}
 			op.Body = &model.BodySpec{Type: bodyType}
+			fieldNames := make([]string, 0, len(raw.Body.Fields))
+			for field := range raw.Body.Fields {
+				fieldNames = append(fieldNames, field)
+			}
+			sort.Strings(fieldNames)
+			for _, field := range fieldNames {
+				typ := raw.Body.Fields[field]
+				if field == "" || !simpleFieldTypes[typ] {
+					return nil, model.Errorf(model.ExitLocal, "%s operation %s: body.fields.%s must be one of string, integer, number, boolean, array, object", file, name, field)
+				}
+				op.Body.Schema.Fields = append(op.Body.Schema.Fields, model.Field{Name: field, Type: typ})
+			}
+			if len(fieldNames) > 0 {
+				op.Body.Schema.Type = "object"
+			}
 		}
 		index.Ops = append(index.Ops, op)
 	}
