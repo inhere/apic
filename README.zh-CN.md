@@ -289,6 +289,21 @@ apic jenkins job-build --name demo --BRANCH main
 
 可直接复制使用的只读 GitLab 站点（定义文件、带 `PRIVATE-TOKEN` 认证的站点文件、示例命令）见 [examples/gitlab](examples/gitlab/)。
 
+### 分享站点
+
+站点、它的简单定义和 overlay 可以打包成一个多文档 YAML 文件：
+
+```bash
+apic site export jenkins --out jenkins.bundle.yaml   # 不带 --out 则写到 stdout
+apic site import jenkins.bundle.yaml                 # 文件、https URL 或 - （stdin）
+apic site import https://example.com/jenkins.bundle.yaml --name ci --yes
+```
+
+- 导出时 `${env:}` / `${exec:}` 引用原样保留；站点里有明文凭证则拒绝，加 `--allow-plaintext` 才导出。OpenAPI 站点只导出站点文档，本地 spec 文件不会打进去。
+- 导入先校验全部内容，再写 `sites/<name>.yaml`、`defs/<name>.yaml`、`overlays/<name>.yaml`，最后输出新站点的 `config check` 警告。站点或目标文件已存在时退出 1，加 `--force` 才覆盖；定义在 `config.yaml` 里的站点永远不会被替换。
+- 站点包可能让 apic 执行命令（`auths` 里的 `${exec:...}`、`type: exec` 认证）。导入会先列出每条命令，没有 `--yes` 时退出 2，请先看清再确认。
+- 下载限制 1 MiB、30 秒。`apic site add <name> --def <URL>` 用同样的方式获取简单定义，保存为 `defs/<name>.yaml`。
+
 ### 分页
 
 ```yaml

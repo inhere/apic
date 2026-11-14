@@ -325,6 +325,31 @@ apic jenkins job-build --name demo --BRANCH main
 A ready-to-copy read-only GitLab site (definition, site file with a
 `PRIVATE-TOKEN` auth, sample commands) is in [examples/gitlab](examples/gitlab/).
 
+### Share a site
+
+A site, its simple definition and its overlay travel as one multi-document
+YAML file:
+
+```bash
+apic site export jenkins --out jenkins.bundle.yaml   # or to stdout
+apic site import jenkins.bundle.yaml                 # file, https URL or - for stdin
+apic site import https://example.com/jenkins.bundle.yaml --name ci --yes
+```
+
+- Export keeps `${env:}` / `${exec:}` references as written and refuses a site
+  with plaintext credentials unless `--allow-plaintext`. For an OpenAPI site
+  only the site document is exported; a local spec file is not embedded.
+- Import checks everything before it writes `sites/<name>.yaml`,
+  `defs/<name>.yaml` and `overlays/<name>.yaml`, and then prints the
+  `config check` warnings of the new site. An existing site or file stops the
+  import (exit 1) unless `--force`; a site defined in `config.yaml` is never
+  replaced.
+- A bundle can make apic run commands (`${exec:...}` in `auths`, `type: exec`
+  auths). Import prints each command first and stops with exit 2 unless you
+  pass `--yes`. Read them before you do.
+- Downloads are limited to 1 MiB and 30 s. `apic site add <name> --def <URL>`
+  fetches a simple definition the same way and saves it as `defs/<name>.yaml`.
+
 ### Pagination
 
 ```yaml

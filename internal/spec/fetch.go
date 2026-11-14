@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/inhere/apic/internal/model"
 )
@@ -77,4 +78,52 @@ func Fetch(ctx context.Context, src model.Source, dir string, opt FetchOptions) 
 		return nil, "", false, model.Errorf(model.ExitNetwork, "read definition %s: network response failed", location)
 	}
 	return data, resp.Header.Get("ETag"), false, nil
+}
+
+// MaxDownload is the largest body FetchText accepts.
+const MaxDownload = 1 << 20
+
+// downloadTimeout bounds one FetchText request.
+const downloadTimeout = 30 * time.Second
+
+// FetchText downloads a small text document (a simple definition or a site
+// bundle) with a plain GET: no credentials, 30s timeout, at most MaxDownload
+// bytes. Failures are coded like a request: network 3, HTTP 4xx 4, 5xx 5, any
+// other status 1. Messages carry the URL without its query.
+func FetchText(ctx context.Context, rawURL string, client *http.Client) ([]byte, error) {
+	u, err := url.Parse(rawURL)
+	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+		return nil, model.Errorf(model.ExitLocal, "invalid URL: must be http or https")
+	}
+	location := u.Scheme + "://" + u.Host + u.EscapedPath()
+	ctx, cancel := context.WithTimeout(ctx, downloadTimeout)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
+	if err != nil {
+		return nil, model.Errorf(model.ExitLocal, "invalid URL")
+	}
+	if client == nil {
+		client = http.DefaultClient
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, model.Errorf(model.ExitNetwork, "download %s: network request failed", location)
+	}
+	defer resp.Body.Close()
+	switch {
+	case resp.StatusCode >= 500:
+		return nil, model.Errorf(model.ExitHTTP5xx, "download %s: HTTP %d", location, resp.StatusCode)
+	case resp.StatusCode >= 400:
+		return nil, model.Errorf(model.ExitHTTP4xx, "download %s: HTTP %d", location, resp.StatusCode)
+	case resp.StatusCode < 200 || resp.StatusCode >= 300:
+		return nil, model.Errorf(model.ExitLocal, "download %s: HTTP %d", location, resp.StatusCode)
+	}
+	data, err := io.ReadAll(io.LimitReader(resp.Body, MaxDownload+1))
+	if err != nil {
+		return nil, model.Errorf(model.ExitNetwork, "download %s: network response failed", location)
+	}
+	if len(data) > MaxDownload {
+		return nil, model.Errorf(model.ExitLocal, "download %s: larger than %d bytes", location, MaxDownload)
+	}
+	return data, nil
 }

@@ -70,6 +70,12 @@ apic site add pet --def ./defs/pet.yaml --base-url https://api.example.com
   YAML, then run `apic site refresh pet`.
 - Do not put credentials or tokens in a URL; keep them in `.env` and reference
   them as `${env:NAME}`.
+- `--def` also takes an http(s) URL; the definition is saved as
+  `defs/<name>.yaml`.
+- `apic site export pet --out pet.yaml` packs a site with its definition and
+  overlay into one YAML file; `apic site import pet.yaml` (file, URL or `-`)
+  installs it. Export refuses plaintext credentials; import lists the commands
+  a bundle would run and needs `--yes` to proceed.
 
 ## Simple definitions
 

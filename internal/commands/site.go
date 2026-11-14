@@ -31,9 +31,11 @@ func siteCommand(g *globalOpts) *gcli.Command {
 		{Name: "add", Desc: "Add a site; for authenticated specs configure source.auth and auths in its YAML, then run site refresh", Config: func(c *gcli.Command) {
 			c.AddArg("name", "Site name", true)
 			c.StrOpt(&add.spec, "spec", "", "", "OpenAPI URL or file")
-			c.StrOpt(&add.def, "def", "", "", "Simple definition file")
+			c.StrOpt(&add.def, "def", "", "", "Simple definition file or http(s) URL")
 			c.StrOpt(&add.baseURL, "base-url", "", "", "Default base URL")
 		}, Func: func(c *gcli.Command, _ []string) error { return addSite(c.Arg("name").String(), add) }},
+		siteExportCommand(),
+		siteImportCommand(),
 		{Name: "rm", Desc: "Remove a managed site", Config: siteNameArg, Func: func(c *gcli.Command, _ []string) error { return removeSite(c.Arg("name").String()) }},
 		{Name: "ls", Desc: "List sites", Config: func(c *gcli.Command) { g.bindOutput(&c.Flags) }, Func: func(c *gcli.Command, _ []string) error { return listSites(g.Output) }},
 		{Name: "show", Desc: "Show a site", Config: siteNameArg, Func: func(c *gcli.Command, _ []string) error { return showSite(c.Arg("name").String()) }},
@@ -168,7 +170,22 @@ func addSite(name string, opt *siteAddOptions) (result error) {
 		return localError(err)
 	}
 	src := model.Source{Type: "openapi"}
-	if opt.def != "" {
+	downloaded := ""
+	if isURL(opt.def) {
+		// The definition is kept as defs/<name>.yaml, written before it is
+		// validated and removed again unless the whole add succeeds.
+		if downloaded, err = downloadDefinition(d.Dir, name, opt.def); err != nil {
+			return err
+		}
+		defer func() {
+			if result != nil {
+				if err := os.Remove(downloaded); err != nil && !errors.Is(err, os.ErrNotExist) {
+					result = model.Errorf(model.ExitLocal, "%v; cleanup %s: %v", result, downloaded, err)
+				}
+			}
+		}()
+		src.Type, src.File = "simple", downloaded
+	} else if opt.def != "" {
 		src.Type = "simple"
 		src.File, err = filepath.Abs(opt.def)
 	} else if strings.HasPrefix(opt.spec, "http://") || strings.HasPrefix(opt.spec, "https://") {
@@ -208,6 +225,10 @@ func addSite(name string, opt *siteAddOptions) (result error) {
 	}
 	if base == "" {
 		return model.Errorf(model.ExitLocal, "definition has no base URL; provide --base-url")
+	}
+	if downloaded != "" {
+		// Stored relative to the config directory, like a hand-written site.
+		site.Source.File = "defs/" + name + ".yaml"
 	}
 	site.DefaultEnv = "default"
 	site.Envs = map[string]model.Env{"default": {BaseURL: base}}
@@ -276,6 +297,34 @@ func addSite(name string, opt *siteAddOptions) (result error) {
 		return err
 	}
 	return writeString(os.Stdout, fmt.Sprintf("%s\t%d\t%s\n", name, len(idx.Ops), base))
+}
+
+func isURL(s string) bool { return strings.HasPrefix(s, "http://") || strings.HasPrefix(s, "https://") }
+
+// downloadDefinition fetches a definition URL into defs/<name>.yaml, created
+// exclusively, and returns that path. The caller removes it on failure.
+func downloadDefinition(dir, name, url string) (string, error) {
+	data, err := spec.FetchText(context.Background(), url, nil)
+	if err != nil {
+		return "", err
+	}
+	path := filepath.Join(dir, "defs", name+".yaml")
+	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+		return "", localError(err)
+	}
+	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
+	if errors.Is(err, os.ErrExist) {
+		return "", model.Errorf(model.ExitLocal, "%s already exists", path)
+	}
+	if err != nil {
+		return "", localError(err)
+	}
+	_, werr := f.Write(model.StripBOM(data))
+	if cerr := f.Close(); werr != nil || cerr != nil {
+		_ = os.Remove(path)
+		return "", localError(errors.Join(werr, cerr))
+	}
+	return path, nil
 }
 
 func removeSite(name string) error {

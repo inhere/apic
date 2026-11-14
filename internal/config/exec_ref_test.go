@@ -351,3 +351,25 @@ func TestCheckExecRef(t *testing.T) {
 		assert.False(t, strings.Contains(joined, secret))
 	}
 }
+
+func TestExecCommandsAndPlaintext(t *testing.T) {
+	site := &model.Site{Auths: map[string]model.AuthSpec{
+		"a": {Type: "bearer", Token: "${exec:vault read tok}", Password: "plain"},
+		"b": {Type: "exec", Exec: model.ExecSpec{Command: []string{"get", "--x"}, Env: map[string]string{"K": "${env:K}", "L": "lit"}}},
+		"c": {Type: "login", Login: model.LoginSpec{Body: map[string]any{"password": "${exec:pass show x}", "user": "u", "secret": "lit"}}},
+	}}
+	var got []string
+	for _, use := range config.ExecCommands("s", site) {
+		got = append(got, use.Label+"|"+use.Command)
+	}
+	assert.Eq(t, []string{
+		"site s auth a token|vault read tok",
+		"site s auth b exec.command|get --x",
+		"site s auth c login.body.password|pass show x",
+	}, got)
+	assert.Eq(t, []string{
+		"site s auth a password: plaintext credential",
+		"site s auth b exec.env.L: plaintext credential",
+		"site s auth c login.body.secret: plaintext credential",
+	}, config.PlaintextCredentials("s", site))
+}

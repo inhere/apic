@@ -21,19 +21,8 @@ func Check(cfg *model.Config) []string {
 		warnings = append(warnings, checkAuthNames(name, site)...)
 		for authName, auth := range site.Auths {
 			prefix := fmt.Sprintf("site %s auth %s", name, authName)
-			for field, value := range map[string]string{
-				"token": auth.Token, "password": auth.Password, "value": auth.Value,
-			} {
-				if value != "" && !isReference(value) {
-					warnings = append(warnings, prefix+" "+field+": plaintext credential")
-				}
-				warnings = append(warnings, checkExec(prefix+" "+field, value, true)...)
-			}
-			for key, value := range auth.Exec.Env {
-				if value != "" && !isReference(value) {
-					warnings = append(warnings, prefix+" exec.env."+key+": plaintext credential")
-				}
-				warnings = append(warnings, checkExec(prefix+" exec.env."+key, value, true)...)
+			for _, field := range credentialFields(&auth) {
+				warnings = append(warnings, checkExec(prefix+" "+field.label, field.value, true)...)
 			}
 			for _, field := range execPlainFields(&auth) {
 				warnings = append(warnings, checkExec(prefix+" "+field.label, field.value, false)...)
@@ -50,9 +39,107 @@ func Check(cfg *model.Config) []string {
 			}
 			checkBody(auth.Login.Body, prefix+" login.body", &warnings)
 		}
+		warnings = append(warnings, PlaintextCredentials(name, site)...)
 	}
 	sort.Strings(warnings)
 	return warnings
+}
+
+// PlaintextCredentials reports the credential fields of one site that hold a
+// literal value instead of an ${env:} / ${exec:} reference, as the "plaintext
+// credential" warnings that Check prints. It is shared by site export.
+func PlaintextCredentials(name string, site *model.Site) []string {
+	var warnings []string
+	if site == nil {
+		return nil
+	}
+	for authName, auth := range site.Auths {
+		prefix := fmt.Sprintf("site %s auth %s", name, authName)
+		for _, field := range credentialFields(&auth) {
+			if field.value != "" && !isReference(field.value) {
+				warnings = append(warnings, prefix+" "+field.label+": plaintext credential")
+			}
+		}
+		plaintextBody(auth.Login.Body, prefix+" login.body", &warnings)
+	}
+	sort.Strings(warnings)
+	return warnings
+}
+
+// credentialFields lists the scalar credential values of auth (token, password,
+// value and exec.env entries, the latter in key order) with their labels.
+func credentialFields(auth *model.AuthSpec) []struct{ label, value string } {
+	fields := []struct{ label, value string }{
+		{"token", auth.Token}, {"password", auth.Password}, {"value", auth.Value},
+	}
+	keys := make([]string, 0, len(auth.Exec.Env))
+	for key := range auth.Exec.Env {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	for _, key := range keys {
+		fields = append(fields, struct{ label, value string }{"exec.env." + key, auth.Exec.Env[key]})
+	}
+	return fields
+}
+
+// ExecUse is one command a site would run: where it is written and its text.
+type ExecUse struct{ Label, Command string }
+
+// ExecCommands lists every command that loading credentials of the site runs:
+// each ${exec:...} reference in a credential value and each type exec command.
+func ExecCommands(name string, site *model.Site) []ExecUse {
+	if site == nil {
+		return nil
+	}
+	authNames := make([]string, 0, len(site.Auths))
+	for authName := range site.Auths {
+		authNames = append(authNames, authName)
+	}
+	sort.Strings(authNames)
+	var uses []ExecUse
+	for _, authName := range authNames {
+		auth := site.Auths[authName]
+		prefix := fmt.Sprintf("site %s auth %s", name, authName)
+		for _, field := range credentialFields(&auth) {
+			uses = append(uses, execRefs(prefix+" "+field.label, field.value)...)
+		}
+		bodyExecs(auth.Login.Body, prefix+" login.body", &uses)
+		if auth.Type == "exec" && len(auth.Exec.Command) > 0 {
+			uses = append(uses, ExecUse{prefix + " exec.command", strings.Join(auth.Exec.Command, " ")})
+		}
+	}
+	return uses
+}
+
+func execRefs(label, value string) []ExecUse {
+	var uses []ExecUse
+	for _, match := range valueRef.FindAllStringSubmatch(value, -1) {
+		if strings.HasPrefix(match[0], "${exec:") {
+			uses = append(uses, ExecUse{label, strings.TrimSpace(match[2])})
+		}
+	}
+	return uses
+}
+
+func bodyExecs(value any, path string, uses *[]ExecUse) {
+	switch v := value.(type) {
+	case string:
+		*uses = append(*uses, execRefs(path, v)...)
+	case map[string]any:
+		keys := make([]string, 0, len(v))
+		for key := range v {
+			keys = append(keys, key)
+		}
+		sort.Strings(keys)
+		for _, key := range keys {
+			bodyExecs(v[key], path+"."+key, uses)
+		}
+	case []any:
+		for i, child := range v {
+			bodyExecs(child, fmt.Sprintf("%s[%d]", path, i), uses)
+		}
+	}
 }
 
 // checkAuthNames hints at default_auth and envs.*.auth naming an undefined
@@ -86,12 +173,6 @@ func checkBody(value any, path string, warnings *[]string) {
 	case map[string]any:
 		for key, child := range v {
 			label := path + "." + key
-			lower := strings.ToLower(key)
-			if text, ok := child.(string); ok && text != "" &&
-				(strings.Contains(lower, "pass") || strings.Contains(lower, "secret") ||
-					strings.Contains(lower, "token") || strings.Contains(lower, "key")) && !isReference(text) {
-				*warnings = append(*warnings, label+": plaintext credential")
-			}
 			if text, ok := child.(string); ok {
 				// Every login body string is a credential value.
 				*warnings = append(*warnings, checkExec(label, text, true)...)
@@ -105,6 +186,28 @@ func checkBody(value any, path string, warnings *[]string) {
 				*warnings = append(*warnings, checkExec(label, text, true)...)
 			}
 			checkBody(child, label, warnings)
+		}
+	}
+}
+
+// plaintextBody reports login body strings that are written literally under a
+// credential-looking key.
+func plaintextBody(value any, path string, warnings *[]string) {
+	switch v := value.(type) {
+	case map[string]any:
+		for key, child := range v {
+			label := path + "." + key
+			lower := strings.ToLower(key)
+			if text, ok := child.(string); ok && text != "" &&
+				(strings.Contains(lower, "pass") || strings.Contains(lower, "secret") ||
+					strings.Contains(lower, "token") || strings.Contains(lower, "key")) && !isReference(text) {
+				*warnings = append(*warnings, label+": plaintext credential")
+			}
+			plaintextBody(child, label, warnings)
+		}
+	case []any:
+		for i, child := range v {
+			plaintextBody(child, fmt.Sprintf("%s[%d]", path, i), warnings)
 		}
 	}
 }

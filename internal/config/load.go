@@ -78,6 +78,19 @@ func Load(dir string) (*model.Config, error) {
 	return cfg, nil
 }
 
+// ParseSite decodes and validates the content of one site file as Load does;
+// dir resolves a relative source.file and file is only used for messages.
+func ParseSite(dir, file, name string, data []byte) (*model.Site, error) {
+	var site model.Site
+	if err := decodeSite(model.StripBOM(data), &site); err != nil {
+		return nil, model.Errorf(model.ExitLocal, "%s site %q: %v", file, name, err)
+	}
+	if err := validateSite(dir, file, name, &site); err != nil {
+		return nil, err
+	}
+	return &site, nil
+}
+
 // ValidateSiteName checks the shared syntax and reserved command names.
 func ValidateSiteName(name string) error {
 	return validateName("site", name)
