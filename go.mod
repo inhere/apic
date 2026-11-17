@@ -7,7 +7,7 @@ require (
 	github.com/goccy/go-yaml v1.19.2
 	github.com/gookit/color v1.6.3
 	github.com/gookit/gcli/v3 v3.8.6
-	github.com/gookit/goutil v0.8.6
+	github.com/gookit/goutil v0.9.0
 	golang.org/x/term v0.47.0
 )
 
